@@ -1,0 +1,317 @@
+@import "tailwindcss";
+
+:root {
+  color-scheme: light dark;
+
+  --bg-canvas-light: #f4f6f8;
+  --bg-canvas-dark: #0d131c;
+  --bg-panel-light: #ffffff;
+  --bg-panel-dark: #141d2b;
+  --bg-elevated-light: #eef2f6;
+  --bg-elevated-dark: #1b2638;
+  --border-subtle-light: #d5dde5;
+  --border-subtle-dark: #243247;
+  --text-primary-light: #0f1b2b;
+  --text-primary-dark: #e6edf5;
+  --text-secondary-light: #475569;
+  --text-secondary-dark: #94a3b8;
+
+  --accent-light: #026498;
+  --accent-dark: #38bdf8;
+  --accent-ink-light: #ffffff;
+  --accent-ink-dark: #071926;
+
+  --status-pass-light: #0f7b55;
+  --status-pass-dark: #34d399;
+  --status-pass-bg-light: #e6f6ef;
+  --status-pass-bg-dark: #0d3328;
+
+  --status-marginal-light: #b45309;
+  --status-marginal-dark: #fbbf24;
+  --status-marginal-bg-light: #fef3dc;
+  --status-marginal-bg-dark: #3a2709;
+
+  --status-fail-light: #c81e1e;
+  --status-fail-dark: #f87171;
+  --status-fail-bg-light: #fde8e8;
+  --status-fail-bg-dark: #3c1419;
+
+  --terrain-fill-light: #cbd5e1;
+  --terrain-fill-dark: #29384e;
+  --terrain-stroke-light: #475569;
+  --terrain-stroke-dark: #64748b;
+
+  --bg-canvas: var(--bg-canvas-light);
+  --bg-panel: var(--bg-panel-light);
+  --bg-elevated: var(--bg-elevated-light);
+  --border-subtle: var(--border-subtle-light);
+  --text-primary: var(--text-primary-light);
+  --text-secondary: var(--text-secondary-light);
+  --accent: var(--accent-light);
+  --accent-ink: var(--accent-ink-light);
+  --status-pass: var(--status-pass-light);
+  --status-pass-bg: var(--status-pass-bg-light);
+  --status-marginal: var(--status-marginal-light);
+  --status-marginal-bg: var(--status-marginal-bg-light);
+  --status-fail: var(--status-fail-light);
+  --status-fail-bg: var(--status-fail-bg-light);
+  --terrain-fill: var(--terrain-fill-light);
+  --terrain-stroke: var(--terrain-stroke-light);
+
+  --scrollbar-track: #e9eef3;
+  --scrollbar-thumb: #94a3b8;
+
+  @media (prefers-color-scheme: dark) {
+    --bg-canvas: var(--bg-canvas-dark);
+    --bg-panel: var(--bg-panel-dark);
+    --bg-elevated: var(--bg-elevated-dark);
+    --border-subtle: var(--border-subtle-dark);
+    --text-primary: var(--text-primary-dark);
+    --text-secondary: var(--text-secondary-dark);
+    --accent: var(--accent-dark);
+    --accent-ink: var(--accent-ink-dark);
+    --status-pass: var(--status-pass-dark);
+    --status-pass-bg: var(--status-pass-bg-dark);
+    --status-marginal: var(--status-marginal-dark);
+    --status-marginal-bg: var(--status-marginal-bg-dark);
+    --status-fail: var(--status-fail-dark);
+    --status-fail-bg: var(--status-fail-bg-dark);
+    --terrain-fill: var(--terrain-fill-dark);
+    --terrain-stroke: var(--terrain-stroke-dark);
+    --scrollbar-track: #111926;
+    --scrollbar-thumb: #475569;
+  }
+
+  &:has(> head > meta[name="color-scheme"][content="dark"]) {
+    color-scheme: dark;
+  }
+  &:has(> head > meta[name="color-scheme"][content="light"]) {
+    color-scheme: light;
+  }
+
+  @supports (color: light-dark(white, black)) {
+    --bg-canvas: light-dark(var(--bg-canvas-light), var(--bg-canvas-dark));
+    --bg-panel: light-dark(var(--bg-panel-light), var(--bg-panel-dark));
+    --bg-elevated: light-dark(var(--bg-elevated-light), var(--bg-elevated-dark));
+    --border-subtle: light-dark(var(--border-subtle-light), var(--border-subtle-dark));
+    --text-primary: light-dark(var(--text-primary-light), var(--text-primary-dark));
+    --text-secondary: light-dark(var(--text-secondary-light), var(--text-secondary-dark));
+    --accent: light-dark(var(--accent-light), var(--accent-dark));
+    --accent-ink: light-dark(var(--accent-ink-light), var(--accent-ink-dark));
+    --status-pass: light-dark(var(--status-pass-light), var(--status-pass-dark));
+    --status-pass-bg: light-dark(var(--status-pass-bg-light), var(--status-pass-bg-dark));
+    --status-marginal: light-dark(var(--status-marginal-light), var(--status-marginal-dark));
+    --status-marginal-bg: light-dark(var(--status-marginal-bg-light), var(--status-marginal-bg-dark));
+    --status-fail: light-dark(var(--status-fail-light), var(--status-fail-dark));
+    --status-fail-bg: light-dark(var(--status-fail-bg-light), var(--status-fail-bg-dark));
+    --terrain-fill: light-dark(var(--terrain-fill-light), var(--terrain-fill-dark));
+    --terrain-stroke: light-dark(var(--terrain-stroke-light), var(--terrain-stroke-dark));
+    --scrollbar-track: light-dark(#e9eef3, #111926);
+    --scrollbar-thumb: light-dark(#94a3b8, #475569);
+  }
+
+  accent-color: var(--accent);
+  scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background-color: var(--bg-canvas);
+  color: var(--text-primary);
+  font-family: 'IBM Plex Sans', system-ui, -apple-system, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+.font-mono-num {
+  font-family: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+.workbench-root {
+  display: flex;
+  flex-direction: column;
+  height: 100dvh;
+  min-height: 540px;
+  background: var(--bg-canvas);
+  color: var(--text-primary);
+}
+
+@media (max-width: 959px) {
+  .workbench-root {
+    height: auto;
+    min-height: 100dvh;
+  }
+}
+
+/* Native <dialog> top-layer ergonomics & scroll containment */
+dialog.rf-dialog {
+  margin: auto;
+  padding: 0;
+  max-width: min(720px, calc(100vw - 2rem));
+  max-height: min(86dvh, 760px);
+  width: 100%;
+  border: 1px solid var(--border-subtle);
+  border-radius: 10px;
+  background: var(--bg-panel);
+  color: var(--text-primary);
+  box-shadow: 0 24px 48px rgb(0 0 0 / 0.28);
+}
+
+dialog.rf-dialog[open] {
+  display: flex;
+  flex-direction: column;
+}
+
+dialog.rf-dialog:modal {
+  overscroll-behavior: contain;
+}
+
+dialog.rf-dialog::backdrop {
+  overflow: hidden;
+  overscroll-behavior: contain;
+  background: rgb(13 19 28 / 0.58);
+  backdrop-filter: blur(3px);
+}
+
+/* Accessible form validation via :user-invalid */
+.rf-input {
+  background: var(--bg-canvas);
+  color: var(--text-primary);
+  border: 1px solid var(--border-subtle);
+  border-radius: 6px;
+  padding: 0.375rem 0.5rem;
+  font-size: 0.8125rem;
+  transition: border-color 120ms ease;
+}
+
+.rf-input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.rf-input:is(:user-invalid, .user-invalid-fallback) {
+  border-color: var(--status-fail);
+}
+
+.field-error-msg {
+  display: none;
+  color: var(--status-fail);
+  font-size: 0.75rem;
+  margin-top: 0.2rem;
+}
+
+.rf-input:is(:user-invalid, .user-invalid-fallback) ~ .field-error-msg {
+  display: block;
+}
+
+/* Container-queried responsive link budget table */
+.budget-table-wrap {
+  overflow: auto;
+  max-inline-size: 100%;
+  max-block-size: min(460px, 55dvh);
+  container-type: inline-size;
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  background: var(--bg-panel);
+}
+
+.budget-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 0.8125rem;
+  --label-1: "Parameter";
+  --label-2: "Value";
+  --label-3: "Notes";
+}
+
+.budget-table thead {
+  position: sticky;
+  inset-block-start: 0;
+  z-index: 2;
+  background: var(--bg-elevated);
+}
+
+.budget-table th,
+.budget-table td {
+  padding: 0.45rem 0.65rem;
+  border-bottom: 1px solid var(--border-subtle);
+  text-align: left;
+  vertical-align: middle;
+}
+
+.budget-table tbody th {
+  position: sticky;
+  inset-inline-start: 0;
+  background: var(--bg-panel);
+  font-weight: 500;
+}
+
+.budget-table tr.is-summary th,
+.budget-table tr.is-summary td {
+  background: var(--bg-elevated);
+  font-weight: 600;
+}
+
+@container (width < 320px) {
+  .budget-table,
+  .budget-table thead,
+  .budget-table tbody,
+  .budget-table tr,
+  .budget-table th,
+  .budget-table td {
+    display: block;
+  }
+
+  .budget-table thead {
+    display: none;
+  }
+
+  .budget-table tr {
+    border-bottom: 1px solid var(--border-subtle);
+    padding: 0.35rem 0.5rem;
+  }
+
+  .budget-table th,
+  .budget-table td {
+    border-bottom: 0;
+    padding: 0.15rem 0;
+  }
+
+  .budget-table td:nth-child(2)::before {
+    content: var(--label-2) ": ";
+    color: var(--text-secondary);
+    font-weight: 500;
+  }
+
+  .budget-table td:nth-child(3)::before {
+    content: var(--label-3) ": ";
+    color: var(--text-secondary);
+    font-weight: 500;
+  }
+}
+
+.visually-hidden:where(:not(:focus-within, :active)) {
+  position: absolute !important;
+  clip-path: inset(50%) !important;
+  overflow: hidden !important;
+  width: 1px !important;
+  height: 1px !important;
+  margin: -1px !important;
+  padding: 0 !important;
+  border: 0 !important;
+  white-space: nowrap !important;
+}
+
+/* Keep Leaflet controls crisp in both light & dark themes */
+.leaflet-container {
+  font-family: 'IBM Plex Sans', system-ui, sans-serif;
+  background: var(--bg-elevated);
+}
+
+.linksight-pin-wrap {
+  background: transparent;
+  border: 0;
+}

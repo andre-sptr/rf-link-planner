@@ -1,0 +1,28 @@
+{
+  "name": "rf-link-planner",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "packages/rf-engine",
+    "apps/api",
+    "apps/web"
+  ],
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "scripts": {
+    "build:engine": "npm run build --workspace=@linksight/rf-engine",
+    "build:api": "npm run build --workspace=@linksight/api",
+    "build:web": "npm run build --workspace=@linksight/web",
+    "build": "npm run build:engine && npm run build:api && npm run build:web",
+    "typecheck": "npm run build:engine && npm run typecheck --workspace=@linksight/api && npm run typecheck --workspace=@linksight/web",
+    "test": "npm run build:engine && npm test --workspace=@linksight/rf-engine && npm test --workspace=@linksight/api && npm test --workspace=@linksight/web",
+    "dev:api": "npm run dev --workspace=@linksight/api",
+    "dev:web": "npm run dev --workspace=@linksight/web"
+  },
+  "allowScripts": {
+    "better-sqlite3@12.11.1": true,
+    "esbuild@0.28.2": true
+  }
+}
