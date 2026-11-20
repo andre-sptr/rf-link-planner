@@ -11,7 +11,7 @@ export interface FresnelProfileChartProps {
   svgRef: React.RefObject<SVGSVGElement | null>;
 }
 
-const PAD = { top: 20, right: 20, bottom: 28, left: 54 };
+const PAD = { top: 20, right: 26, bottom: 28, left: 54 };
 
 export function FresnelProfileChart({
   hops,
@@ -250,6 +250,75 @@ export function FresnelProfileChart({
             </span>
           )}
         </div>
+      </div>
+
+      <div
+        className="flex flex-wrap items-center gap-x-4 gap-y-1 px-3 py-1 border-b text-[11px]"
+        style={{
+          borderColor: 'var(--border-subtle)',
+          color: 'var(--text-secondary)',
+        }}
+        aria-label="Chart legend"
+      >
+        <span className="inline-flex items-center gap-1.5">
+          <span
+            className="inline-block w-3 h-0.5"
+            style={{ backgroundColor: badge.color }}
+            aria-hidden="true"
+          />
+          <span>LOS Ray</span>
+        </span>
+        <span className="inline-flex items-center gap-1.5">
+          <span
+            className="inline-block w-3 h-2 rounded-xs border border-dashed"
+            style={{
+              borderColor: 'var(--accent)',
+              backgroundColor: 'color-mix(in srgb, var(--accent) 18%, transparent)',
+            }}
+            aria-hidden="true"
+          />
+          <span>1st Fresnel (F1)</span>
+        </span>
+        <span className="inline-flex items-center gap-1.5">
+          <span
+            className="inline-block w-3 h-2 rounded-xs"
+            style={{
+              backgroundColor: badge.color,
+              opacity: 0.3,
+            }}
+            aria-hidden="true"
+          />
+          <span>60% F1 Corridor</span>
+        </span>
+        <span className="inline-flex items-center gap-1.5">
+          <span
+            className="inline-block w-3 h-2 rounded-xs border"
+            style={{
+              backgroundColor: 'var(--terrain-fill)',
+              borderColor: 'var(--terrain-stroke)',
+            }}
+            aria-hidden="true"
+          />
+          <span>Terrain + Clutter</span>
+        </span>
+        <span className="inline-flex items-center gap-1.5">
+          <span
+            className="inline-block w-3 border-t border-dotted"
+            style={{ borderColor: 'var(--text-secondary)' }}
+            aria-hidden="true"
+          />
+          <span>Earth Bulge (k)</span>
+        </span>
+        {activeHop.worstPoint && activeHop.minClearanceRatio < 0.6 && (
+          <span className="inline-flex items-center gap-1.5">
+            <span
+              className="inline-block w-2 h-2 rounded-full"
+              style={{ backgroundColor: 'var(--status-fail)' }}
+              aria-hidden="true"
+            />
+            <span>Worst Obstruction</span>
+          </span>
+        )}
       </div>
 
       <div ref={wrapRef} className="w-full h-[210px] relative">

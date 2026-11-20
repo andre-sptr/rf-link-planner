@@ -115,6 +115,21 @@ export function sampleGreatCirclePath(
 }
 
 /**
+ * Computes the spherical great-circle midpoint between two WGS-84 coordinates.
+ */
+export function calculateGreatCircleMidpoint(
+  a: Coordinates,
+  b: Coordinates,
+): Coordinates {
+  const sampled = sampleGreatCirclePath(a, b, 3);
+  const mid = sampled[1] ?? a;
+  return {
+    lat: Number(mid.lat.toFixed(5)),
+    lng: Number(mid.lng.toFixed(5)),
+  };
+}
+
+/**
  * Deterministic smooth synthetic terrain elevation (meters ASL) used only as a
  * graceful fallback when all external DEM APIs are unreachable.
  */

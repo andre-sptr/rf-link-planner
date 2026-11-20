@@ -3,7 +3,6 @@ import {
   analyzeScenario,
   type FresnelPoint,
 } from '@linksight/rf-engine';
-import { exportSiteSurveyPdf } from './lib/pdfReport';
 import {
   resolveActiveTheme,
   subscribeThemeChanges,
@@ -63,10 +62,12 @@ export function App() {
   const handleExportPdf = async () => {
     setExportingPdf(true);
     try {
+      const { exportSiteSurveyPdf } = await import('./lib/pdfReport');
       await exportSiteSurveyPdf({
         scenario: store.scenario,
         analysis,
         elevationSource: elevation.source,
+        chartHopLabel: activeHop.label,
         chartSvgElement: chartSvgRef.current,
       });
       store.notify('Exported PDF RF Site Survey report.');
@@ -113,8 +114,8 @@ export function App() {
           onApplyTowerBoost={store.applyBalancedTowerBoost}
         />
 
-        <div className="flex-1 min-w-0 min-h-0 flex flex-col">
-          <div className="relative flex-1 min-h-[300px]">
+        <div className="order-1 lg:order-2 flex-1 min-w-0 min-h-0 flex flex-col">
+          <div className="relative h-[340px] lg:h-auto lg:flex-1 lg:min-h-[300px]">
             <MapCanvas
               scenario={store.scenario}
               analysis={analysis}
@@ -128,6 +129,7 @@ export function App() {
                 <KpiRibbon
                   analysis={analysis}
                   activeHop={activeHop}
+                  targetFadeMarginDb={store.scenario.propagation.targetFadeMarginDb}
                   elevationSource={elevation.source}
                   degraded={elevation.degraded}
                   loading={elevation.loading}

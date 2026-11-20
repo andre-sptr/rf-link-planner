@@ -1,0 +1,21 @@
+{
+  "name": "LinkSight RF — RF Link Budget & Fresnel Zone Planner",
+  "short_name": "LinkSight RF",
+  "description": "Interactive RF link budget, single-repeater relay, SRTM terrain elevation, and 1st Fresnel zone clearance planner.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0d131c",
+  "theme_color": "#026498",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    },
+    {
+      "src": "/favicon.ico",
+      "sizes": "32x32",
+      "type": "image/x-icon"
+    }
+  ]
+}

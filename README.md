@@ -4,17 +4,17 @@ Interactive browser-based RF engineering workbench for planning **Point-to-Point
 
 ## Highlights
 
-- **Interactive Topographic Map (Leaflet):** Draggable TX, Repeater, and RX site markers with 4 basemap layers (`ESRI World Topo`, `ESRI Satellite`, `OpenStreetMap`, `ESRI Dark Gray`), status-colored hop vectors, automatic **worst Fresnel obstruction warning pins**, and live bidirectional chart-to-map crosshair synchronization.
-- **Terrain Elevation & Fresnel Profile Engine:** Real-time SVG cross-section plotting ground elevation, urban/forest clutter, Earth curvature bulge ($k$-factor `4/3`, `1.0`, `2/3`), Line-of-Sight ray, **1st Fresnel Zone ($F_1$)**, and **60% $F_1$ clearance corridor**.
-- **Relay vs. Direct Comparison:** Automatically evaluates both individual relay hops and the direct TX → RX reference path to quantify fade margin improvement (dB) and Fresnel clearance gain (%).
-- **Tower Height Advisor:** Closed-form solver recommending the minimum extra tower height (balanced, TX-only, or RX-only) to restore $\ge 60\%$ $F_1$ clearance, with 1-click auto-apply.
+- **Interactive Topographic Map (Leaflet):** Draggable TX, Repeater, and RX site markers with 4 basemap layers (`ESRI World Topo`, `ESRI Satellite`, `OpenStreetMap`, `ESRI Dark Gray`), automatic light/dark basemap synchronization, right-click quick placement (`Set TX / Repeater / RX here`), status-colored hop vectors, automatic **worst Fresnel obstruction warning pins**, and live bidirectional chart-to-map crosshair synchronization.
+- **Terrain Elevation & Fresnel Profile Engine:** Real-time SVG cross-section with interactive legend plotting ground elevation, urban/forest clutter, Earth curvature bulge ($k$-factor `4/3`, `1.0`, `2/3`), Line-of-Sight ray, **1st Fresnel Zone ($F_1$)**, and **60% $F_1$ clearance corridor**.
+- **Relay vs. Direct Comparison & Per-Site Hardware Tuning:** Evaluates both individual relay hops and the direct TX → RX reference path to quantify fade margin improvement (dB) and Fresnel clearance gain (%), with independent or synchronized per-site TX/Repeater/RX radio power, sensitivity, antenna gain, coaxial feeder, connector, and duplexer loss controls.
+- **Tower Height Advisor:** Closed-form solver recommending minimum extra tower height (balanced, plus feasible TX-only or RX-only estimates) to restore $\ge 60\%$ $F_1$ clearance, with 1-click auto-apply.
 - **Industry RF Link Budget Math:**
   - Free Space Path Loss (`FSPL`) + **ITU-R P.526-15 Single Knife-Edge Diffraction** ($\nu$)
   - Empirical **Okumura-Hata** (150–1500 MHz) & **COST-231 Hata** (1500–2000 MHz) with automatic domain bounds warnings
   - Frequency-dependent coaxial feeder attenuation (`RG-58`, `RG-213`, `LMR-240`, `LMR-400`, `LDF4-50A`, `LDF5-50A`)
   - Live `dBm ↔ Watts` and `dBi ↔ dBd` unit readouts
-- **Resilient DEM Caching Proxy (Fastify + SQLite WAL):** Queries OpenTopoData SRTM 30m first, automatically fails over to Open-Meteo Copernicus 90m on rate limits or polar latitudes, caches coordinates at 4-decimal (~11 m) grid resolution in SQLite WAL, and degrades gracefully offline.
-- **Zero-Friction Sharing & PDF Site Survey Export:** Share full scenarios via base64url `?s=` links, save presets locally in `localStorage`, and export 2-page A4 **PDF RF Site Survey Engineering Reports** with embedded Fresnel charts and itemized link budgets.
+- **Resilient DEM Caching Proxy (Fastify + SQLite WAL):** Trust-proxy per-IP rate limiting, global OpenTopoData SRTM 30m request pacing with single-flight deduplication, automatic failover to Open-Meteo Copernicus 90m, bounded 4-decimal (~11 m) SQLite WAL cache with automatic TTL/row-cap pruning, and offline synthetic fallback.
+- **Zero-Friction Sharing, Draft Recovery & Lazy PDF Export:** Share full scenarios via base64url `?s=` links, auto-save active drafts and named presets in `localStorage`, and export 2-page A4 **PDF RF Site Survey Engineering Reports** via an on-demand lazy-loaded `jsPDF` chunk with print-resolved SVG charts.
 
 ## Architecture
 

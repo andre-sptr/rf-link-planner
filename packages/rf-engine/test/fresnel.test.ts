@@ -5,6 +5,7 @@ import {
   calculateDistanceKm,
   calculateEarthBulgeM,
   calculateFresnelRadiusM,
+  calculateGreatCircleMidpoint,
   calculateKnifeEdgeLossDb,
   sampleGreatCirclePath,
 } from '../src/index.js';
@@ -64,5 +65,32 @@ describe('geodesy and Fresnel math', () => {
     );
     expect(fixed.minClearanceRatio).toBeGreaterThanOrEqual(0.6);
     expect(fixed.heightAdvisor.needed).toBe(false);
+  });
+
+  it('marks infeasible single-end tower recommendations as null near endpoints', () => {
+    const tx = { lat: 0, lng: 0 };
+    const rx = { lat: 0, lng: 0.089932 }; // ~10 km
+    const path = sampleGreatCirclePath(tx, rx, 41); // step fraction = 0.025
+    const elevations = path.map((_, i) => (i === 1 ? 180 : 100)); // obstruction at fraction 0.025
+
+    const res = analyzeFresnelProfile(path, elevations, 20, 20, 450, 4 / 3, 0);
+    expect(res.heightAdvisor.needed).toBe(true);
+    expect(res.heightAdvisor.extraBalancedM).toBeGreaterThan(0);
+    expect(res.heightAdvisor.extraRxOnlyM).toBeNull();
+    expect(res.heightAdvisor.extraTxOnlyM).not.toBeNull();
+  });
+
+  it('computes spherical great-circle midpoint safely', () => {
+    const a = { lat: -6.9475, lng: 107.6191 };
+    const b = { lat: -6.565, lng: 107.762 };
+    const mid = calculateGreatCircleMidpoint(a, b);
+    expect(mid.lat).toBeGreaterThan(-6.9475);
+    expect(mid.lat).toBeLessThan(-6.565);
+    expect(mid.lng).toBeGreaterThan(107.6191);
+    expect(mid.lng).toBeLessThan(107.762);
+
+    const same = calculateGreatCircleMidpoint(a, a);
+    expect(same.lat).toBeCloseTo(a.lat, 4);
+    expect(same.lng).toBeCloseTo(a.lng, 4);
   });
 });

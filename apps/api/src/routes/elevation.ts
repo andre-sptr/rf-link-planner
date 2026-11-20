@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import type { ElevationCache } from '../cache.js';
-import { resolveElevations, type FetchLike } from '../providers.js';
+import { resolveElevations, type UpstreamCoordinator } from '../providers.js';
 
 const CoordinateSchema = z.object({
   lat: z.number().finite().min(-85).max(85),
@@ -19,7 +19,7 @@ const SinglePointQuerySchema = z.object({
 
 export interface ElevationRoutesContext {
   cache: ElevationCache;
-  fetchImpl: FetchLike;
+  coordinator: UpstreamCoordinator;
 }
 
 export function registerElevationRoutes(
@@ -28,7 +28,7 @@ export function registerElevationRoutes(
 ): void {
   const startedAt = Date.now();
 
-  app.get('/api/health', async () => {
+  app.get('/api/health', { config: { rateLimit: false } }, async () => {
     return {
       status: 'ok',
       service: 'linksight-rf-api',
@@ -52,7 +52,7 @@ export function registerElevationRoutes(
     const result = await resolveElevations(
       parsed.data.points,
       ctx.cache,
-      ctx.fetchImpl,
+      ctx.coordinator,
     );
     return reply.send(result);
   });
@@ -72,7 +72,7 @@ export function registerElevationRoutes(
     const result = await resolveElevations(
       [{ lat: parsed.data.lat, lng: parsed.data.lng }],
       ctx.cache,
-      ctx.fetchImpl,
+      ctx.coordinator,
     );
 
     return reply.send({

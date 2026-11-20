@@ -206,6 +206,29 @@ dialog.rf-dialog::backdrop {
   display: block;
 }
 
+@media (pointer: coarse) {
+  .rf-input {
+    font-size: max(1rem, 1em);
+    min-height: 44px;
+  }
+}
+
+.rf-fieldset {
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  background: var(--bg-elevated);
+  padding: 0.625rem;
+  margin: 0;
+  min-inline-size: 0;
+}
+
+.rf-legend {
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 0 0.35rem;
+  color: var(--text-primary);
+}
+
 /* Container-queried responsive link budget table */
 .budget-table-wrap {
   overflow: auto;

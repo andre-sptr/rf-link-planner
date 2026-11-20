@@ -10,8 +10,83 @@ export interface SiteSurveyPdfOptions {
   scenario: LinkScenario;
   analysis: LinkAnalysisResult;
   elevationSource: ElevationSource;
+  chartHopLabel?: string;
   chartPngDataUrl?: string | null;
   generatedAt?: Date;
+}
+
+const PRINT_CSS_VAR_MAP: Record<string, string> = {
+  '--bg-canvas': '#f4f6f8',
+  '--bg-panel': '#ffffff',
+  '--bg-elevated': '#eef2f6',
+  '--border-subtle': '#d5dde5',
+  '--text-primary': '#0f1b2b',
+  '--text-secondary': '#475569',
+  '--accent': '#026498',
+  '--accent-ink': '#ffffff',
+  '--status-pass': '#0f7b55',
+  '--status-pass-bg': '#e6f6ef',
+  '--status-marginal': '#b45309',
+  '--status-marginal-bg': '#fef3dc',
+  '--status-fail': '#c81e1e',
+  '--status-fail-bg': '#fde8e8',
+  '--terrain-fill': '#cbd5e1',
+  '--terrain-stroke': '#475569',
+};
+
+function replaceCssVars(raw: string): string {
+  return raw.replace(/var\((--[a-z0-9-]+)(?:,\s*([^)]+))?\)/gi, (_, name: string, fallback?: string) => {
+    return PRINT_CSS_VAR_MAP[name] ?? fallback?.trim() ?? '#334155';
+  });
+}
+
+export function sanitizePdfText(text: string): string {
+  return text
+    .replace(/→/g, '->')
+    .replace(/←/g, '<-')
+    .replace(/↔/g, '<->')
+    .replace(/≥/g, '>=')
+    .replace(/≤/g, '<=')
+    .replace(/ν/g, 'nu')
+    .replace(/–|—/g, '-')
+    .replace(/≈/g, '~')
+    .replace(/•/g, '-')
+    .replace(/…/g, '...');
+}
+
+export function resolveSvgCssVarsForPrint(
+  svgEl: SVGSVGElement,
+  width?: number,
+  height?: number,
+): SVGSVGElement {
+  const clone = svgEl.cloneNode(true) as SVGSVGElement;
+  clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+  if (width !== undefined) clone.setAttribute('width', String(width));
+  if (height !== undefined) clone.setAttribute('height', String(height));
+  clone.setAttribute('font-family', 'Helvetica, Arial, sans-serif');
+
+  const bgRect = clone.ownerDocument.createElementNS('http://www.w3.org/2000/svg', 'rect');
+  bgRect.setAttribute('x', '0');
+  bgRect.setAttribute('y', '0');
+  bgRect.setAttribute('width', '100%');
+  bgRect.setAttribute('height', '100%');
+  bgRect.setAttribute('fill', '#ffffff');
+  clone.insertBefore(bgRect, clone.firstChild);
+
+  const elements: Element[] = [clone, ...Array.from(clone.querySelectorAll('*'))];
+  for (const el of elements) {
+    for (const attr of ['fill', 'stroke', 'color', 'stop-color', 'style']) {
+      const val = el.getAttribute(attr);
+      if (val && val.includes('var(')) {
+        el.setAttribute(attr, replaceCssVars(val));
+      }
+    }
+    if (el.tagName.toLowerCase() === 'text' && el.classList.contains('font-mono-num')) {
+      el.setAttribute('font-family', 'Courier New, monospace');
+    }
+  }
+
+  return clone;
 }
 
 export async function svgElementToPngDataUrl(
@@ -26,20 +101,7 @@ export async function svgElementToPngDataUrl(
     const width = Math.max(640, Math.round(rect.width || 800));
     const height = Math.max(240, Math.round(rect.height || 280));
 
-    const clone = svgEl.cloneNode(true) as SVGSVGElement;
-    clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
-    clone.setAttribute('width', String(width));
-    clone.setAttribute('height', String(height));
-
-    // Inline computed background for clean white report print
-    const bgRect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
-    bgRect.setAttribute('x', '0');
-    bgRect.setAttribute('y', '0');
-    bgRect.setAttribute('width', '100%');
-    bgRect.setAttribute('height', '100%');
-    bgRect.setAttribute('fill', '#ffffff');
-    clone.insertBefore(bgRect, clone.firstChild);
-
+    const clone = resolveSvgCssVarsForPrint(svgEl, width, height);
     const xml = new XMLSerializer().serializeToString(clone);
     const svgBlob = new Blob([xml], { type: 'image/svg+xml;charset=utf-8' });
     const url = URL.createObjectURL(svgBlob);
@@ -80,7 +142,8 @@ export async function svgElementToPngDataUrl(
 }
 
 export function buildSiteSurveyPdfDoc(options: SiteSurveyPdfOptions): jsPDF {
-  const { scenario, analysis, elevationSource, chartPngDataUrl } = options;
+  const { scenario, analysis, elevationSource, chartHopLabel, chartPngDataUrl } =
+    options;
   const generatedAt = options.generatedAt ?? new Date();
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
 
@@ -92,28 +155,27 @@ export function buildSiteSurveyPdfDoc(options: SiteSurveyPdfOptions): jsPDF {
         ? [180, 83, 9]
         : [200, 30, 30];
 
-  // Header Banner
   doc.setFillColor(15, 27, 43);
   doc.rect(0, 0, 210, 28, 'F');
   doc.setTextColor(255, 255, 255);
   doc.setFontSize(15);
-  doc.text('LinkSight RF — Site Survey & Link Budget Report', 14, 12);
+  doc.text('LinkSight RF - Site Survey & Link Budget Report', 14, 12);
   doc.setFontSize(9.5);
   doc.setTextColor(190, 205, 222);
   doc.text(
-    `Scenario: ${scenario.name}  |  Mode: ${scenario.mode === 'relay' ? 'Single-Repeater Relay' : 'Point-to-Point'}  |  DEM: ${elevationSource}`,
+    sanitizePdfText(
+      `Scenario: ${scenario.name}  |  Mode: ${scenario.mode === 'relay' ? 'Single-Repeater Relay' : 'Point-to-Point'}  |  DEM: ${elevationSource}`,
+    ),
     14,
     20,
   );
 
-  // Verdict badge
   doc.setFillColor(...verdictColor);
   doc.roundedRect(166, 7, 30, 9, 2, 2, 'F');
   doc.setTextColor(255, 255, 255);
   doc.setFontSize(9.5);
   doc.text(verdictLabel, 181, 13, { align: 'center' });
 
-  // Executive Summary metrics
   doc.setTextColor(15, 27, 43);
   doc.setFontSize(11);
   doc.text('1. Site Coordinates & Path Geometry', 14, 37);
@@ -121,7 +183,7 @@ export function buildSiteSurveyPdfDoc(options: SiteSurveyPdfOptions): jsPDF {
   const siteRows = [
     [
       'TX Site',
-      scenario.tx.name,
+      sanitizePdfText(scenario.tx.name),
       `${scenario.tx.coords.lat.toFixed(5)}, ${scenario.tx.coords.lng.toFixed(5)}`,
       `${analysis.hops[0]?.txSite.groundElevationM.toFixed(0) ?? scenario.tx.groundElevationM} m ASL`,
       `${scenario.tx.antennaHeightM} m AGL`,
@@ -131,7 +193,7 @@ export function buildSiteSurveyPdfDoc(options: SiteSurveyPdfOptions): jsPDF {
       ? [
           [
             'Repeater',
-            scenario.repeater.name,
+            sanitizePdfText(scenario.repeater.name),
             `${scenario.repeater.coords.lat.toFixed(5)}, ${scenario.repeater.coords.lng.toFixed(5)}`,
             `${analysis.hops[0]?.rxSite.groundElevationM.toFixed(0) ?? scenario.repeater.groundElevationM} m ASL`,
             `${scenario.repeater.antennaHeightM} m AGL`,
@@ -141,7 +203,7 @@ export function buildSiteSurveyPdfDoc(options: SiteSurveyPdfOptions): jsPDF {
       : []),
     [
       'RX Site',
-      scenario.rx.name,
+      sanitizePdfText(scenario.rx.name),
       `${scenario.rx.coords.lat.toFixed(5)}, ${scenario.rx.coords.lng.toFixed(5)}`,
       `${analysis.hops[analysis.hops.length - 1]?.rxSite.groundElevationM.toFixed(0) ?? scenario.rx.groundElevationM} m ASL`,
       `${scenario.rx.antennaHeightM} m AGL`,
@@ -162,11 +224,10 @@ export function buildSiteSurveyPdfDoc(options: SiteSurveyPdfOptions): jsPDF {
     ((doc as unknown as { lastAutoTable?: { finalY?: number } }).lastAutoTable
       ?.finalY ?? 76) + 7;
 
-  // Hop Azimuth & Fresnel Summary
   const hopSummaryRows = analysis.hops.map((hop) => [
-    hop.label,
+    sanitizePdfText(hop.label),
     `${hop.distanceKm.toFixed(2)} km`,
-    `${hop.forwardAzimuthDeg.toFixed(1)}° / ${hop.reverseAzimuthDeg.toFixed(1)}°`,
+    `${hop.forwardAzimuthDeg.toFixed(1)} deg / ${hop.reverseAzimuthDeg.toFixed(1)} deg`,
     `${hop.rslDbm.toFixed(1)} dBm`,
     `${hop.fadeMarginDb.toFixed(1)} dB`,
     `${(hop.minClearanceRatio * 100).toFixed(0)}% F1`,
@@ -175,9 +236,9 @@ export function buildSiteSurveyPdfDoc(options: SiteSurveyPdfOptions): jsPDF {
 
   if (analysis.directReference) {
     hopSummaryRows.push([
-      analysis.directReference.label,
+      sanitizePdfText(analysis.directReference.label),
       `${analysis.directReference.distanceKm.toFixed(2)} km`,
-      `${analysis.directReference.forwardAzimuthDeg.toFixed(1)}° / ${analysis.directReference.reverseAzimuthDeg.toFixed(1)}°`,
+      `${analysis.directReference.forwardAzimuthDeg.toFixed(1)} deg / ${analysis.directReference.reverseAzimuthDeg.toFixed(1)} deg`,
       `${analysis.directReference.rslDbm.toFixed(1)} dBm`,
       `${analysis.directReference.fadeMarginDb.toFixed(1)} dB`,
       `${(analysis.directReference.minClearanceRatio * 100).toFixed(0)}% F1`,
@@ -200,9 +261,13 @@ export function buildSiteSurveyPdfDoc(options: SiteSurveyPdfOptions): jsPDF {
     ((doc as unknown as { lastAutoTable?: { finalY?: number } }).lastAutoTable
       ?.finalY ?? 112) + 8;
 
+  const profileHeading = chartHopLabel
+    ? `2. Terrain Elevation & 1st Fresnel Zone Profile (${sanitizePdfText(chartHopLabel)})`
+    : '2. Terrain Elevation & 1st Fresnel Zone Profile';
+
   doc.setFontSize(11);
   doc.setTextColor(15, 27, 43);
-  doc.text('2. Terrain Elevation & 1st Fresnel Zone Profile', 14, yAfterSites);
+  doc.text(profileHeading, 14, yAfterSites);
 
   if (chartPngDataUrl) {
     doc.addImage(chartPngDataUrl, 'PNG', 14, yAfterSites + 3, 182, 64);
@@ -218,7 +283,6 @@ export function buildSiteSurveyPdfDoc(options: SiteSurveyPdfOptions): jsPDF {
     yAfterSites += 14;
   }
 
-  // Engineering findings
   doc.setFontSize(11);
   doc.setTextColor(15, 27, 43);
   doc.text('3. Engineering Findings & Tower Height Recommendations', 14, yAfterSites + 4);
@@ -232,12 +296,20 @@ export function buildSiteSurveyPdfDoc(options: SiteSurveyPdfOptions): jsPDF {
   }
   for (const hop of analysis.hops) {
     if (hop.heightAdvisor.needed) {
+      const txHint =
+        hop.heightAdvisor.extraTxOnlyM !== null
+          ? `+${hop.heightAdvisor.extraTxOnlyM.toFixed(1)} m TX`
+          : 'TX-only N/A';
+      const rxHint =
+        hop.heightAdvisor.extraRxOnlyM !== null
+          ? `+${hop.heightAdvisor.extraRxOnlyM.toFixed(1)} m RX`
+          : 'RX-only N/A';
       findings.push(
-        `${hop.label}: Worst clearance at ${hop.heightAdvisor.worstDistanceKm.toFixed(1)} km. Add +${hop.heightAdvisor.extraBalancedM.toFixed(1)} m to both towers (or +${hop.heightAdvisor.extraTxOnlyM.toFixed(1)} m TX / +${hop.heightAdvisor.extraRxOnlyM.toFixed(1)} m RX) to reach 60% F1.`,
+        `${hop.label}: Worst clearance at ${hop.heightAdvisor.worstDistanceKm.toFixed(1)} km. Add +${hop.heightAdvisor.extraBalancedM.toFixed(1)} m to both towers (${txHint} / ${rxHint}) to reach 60% F1.`,
       );
     } else {
       findings.push(
-        `${hop.label}: Meets >= 60% 1st Fresnel clearance (${(hop.minClearanceRatio * 100).toFixed(0)}% F1, worst ν = ${hop.worstNu.toFixed(2)}).`,
+        `${hop.label}: Meets >= 60% 1st Fresnel clearance (${(hop.minClearanceRatio * 100).toFixed(0)}% F1, worst nu = ${hop.worstNu.toFixed(2)}).`,
       );
     }
     for (const w of hop.warnings) {
@@ -249,12 +321,12 @@ export function buildSiteSurveyPdfDoc(options: SiteSurveyPdfOptions): jsPDF {
   doc.setTextColor(51, 65, 85);
   let cursorY = yAfterSites + 10;
   for (const line of findings.slice(0, 6)) {
-    const wrapped = doc.splitTextToSize(`• ${line}`, 180) as string[];
+    const wrapped = doc.splitTextToSize(`- ${sanitizePdfText(line)}`, 180) as string[];
     doc.text(wrapped, 14, cursorY);
     cursorY += wrapped.length * 4.5 + 1.5;
   }
 
-  // Page 2: Itemized Link Budget Tables
+  // Page 2+: Itemized Link Budget Breakdown
   doc.addPage();
   doc.setFillColor(15, 27, 43);
   doc.rect(0, 0, 210, 18, 'F');
@@ -264,10 +336,17 @@ export function buildSiteSurveyPdfDoc(options: SiteSurveyPdfOptions): jsPDF {
 
   let budgetY = 26;
   for (const hop of analysis.hops) {
+    if (budgetY > 235) {
+      doc.addPage();
+      budgetY = 20;
+    }
+
     doc.setFontSize(10.5);
     doc.setTextColor(15, 27, 43);
     doc.text(
-      `${hop.label} (${hop.distanceKm.toFixed(2)} km @ ${scenario.propagation.frequencyMhz} MHz)`,
+      sanitizePdfText(
+        `${hop.label} (${hop.distanceKm.toFixed(2)} km @ ${scenario.propagation.frequencyMhz} MHz)`,
+      ),
       14,
       budgetY,
     );
@@ -276,13 +355,13 @@ export function buildSiteSurveyPdfDoc(options: SiteSurveyPdfOptions): jsPDF {
       startY: budgetY + 3,
       head: [['Budget Component', 'Value', 'Notes']],
       body: hop.budgetItems.map((item) => [
-        item.label,
+        sanitizePdfText(item.label),
         `${item.valueDb >= 0 && item.unit === 'dB' ? '+' : ''}${item.valueDb.toFixed(2)} ${item.unit}`,
-        item.note ?? '',
+        sanitizePdfText(item.note ?? ''),
       ]),
       styles: { fontSize: 8.2, cellPadding: 2 },
       headStyles: { fillColor: [2, 100, 152] },
-      margin: { left: 14, right: 14 },
+      margin: { left: 14, right: 14, bottom: 20 },
     });
 
     budgetY =
@@ -290,19 +369,30 @@ export function buildSiteSurveyPdfDoc(options: SiteSurveyPdfOptions): jsPDF {
         ?.finalY ?? budgetY + 70) + 9;
   }
 
-  // Propagation assumptions footer
+  if (budgetY > 266) {
+    doc.addPage();
+    budgetY = 20;
+  }
+
   doc.setFontSize(8.2);
   doc.setTextColor(71, 85, 105);
-  doc.text(
-    `Assumptions: Frequency ${scenario.propagation.frequencyMhz} MHz | Model: ${scenario.propagation.model} | k-factor: ${scenario.propagation.kFactor.toFixed(3)} | Clutter: ${scenario.propagation.clutterHeightM} m | Rain Margin: ${scenario.propagation.rainMarginDb} dB`,
-    14,
-    Math.min(276, budgetY + 2),
+  const assumptionsText = sanitizePdfText(
+    `Assumptions: Frequency ${scenario.propagation.frequencyMhz} MHz | Model: ${scenario.propagation.model} | k-factor: ${scenario.propagation.kFactor.toFixed(3)} | Clutter: ${scenario.propagation.clutterHeightM} m | Rain Margin: ${scenario.propagation.rainMarginDb} dB | Target Fade Margin: ${scenario.propagation.targetFadeMarginDb} dB`,
   );
-  doc.text(
-    `Generated by LinkSight RF (rf.andresptr.site) on ${generatedAt.toISOString().slice(0, 19).replace('T', ' ')} UTC. Preliminary planning tool — verify field obstacles & regulatory EIRP limits prior to deployment.`,
-    14,
-    286,
-  );
+  doc.text(doc.splitTextToSize(assumptionsText, 182) as string[], 14, budgetY + 2);
+
+  const totalPages = doc.getNumberOfPages();
+  const timestamp = generatedAt.toISOString().slice(0, 19).replace('T', ' ');
+  for (let p = 1; p <= totalPages; p++) {
+    doc.setPage(p);
+    doc.setFontSize(7.8);
+    doc.setTextColor(100, 116, 139);
+    doc.text(
+      `Generated by LinkSight RF (rf.andresptr.site) on ${timestamp} UTC - Preliminary planning tool; verify field obstacles & regulatory EIRP limits. Page ${p} of ${totalPages}`,
+      14,
+      290,
+    );
+  }
 
   return doc;
 }

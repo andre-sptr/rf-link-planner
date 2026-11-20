@@ -5,6 +5,7 @@ import { Maximize2 } from 'lucide-react';
 import type {
   FresnelPoint,
   LinkAnalysisResult,
+  LinkMode,
   LinkScenario,
   LinkVerdict,
 } from '@linksight/rf-engine';
@@ -63,6 +64,12 @@ function verdictStroke(verdict: LinkVerdict): string {
   }
 }
 
+function createTooltipContent(text: string): HTMLSpanElement {
+  const span = document.createElement('span');
+  span.textContent = text;
+  return span;
+}
+
 function createPinIcon(label: string, fill: string): L.DivIcon {
   return L.divIcon({
     className: 'linksight-pin-wrap',
@@ -108,7 +115,6 @@ export interface MapCanvasProps {
     role: 'tx' | 'repeater' | 'rx',
     coords: { lat: number; lng: number },
   ) => void;
-  onSelectSiteFocus?: (role: 'tx' | 'repeater' | 'rx') => void;
 }
 
 export function MapCanvas({
@@ -130,9 +136,20 @@ export function MapCanvas({
   );
   const lastScenarioIdRef = useRef<string>('');
 
-  // Keep latest callback ref so marker drag listeners always invoke fresh state setter
   const onMoveSiteRef = useRef(onMoveSite);
   onMoveSiteRef.current = onMoveSite;
+
+  const modeRef = useRef<LinkMode>(scenario.mode);
+  modeRef.current = scenario.mode;
+
+  // Sync theme toggle between Topo and Dark while preserving Satellite/Street choices
+  useEffect(() => {
+    setBasemap((current) => {
+      if (theme === 'dark' && current === 'topo') return 'dark';
+      if (theme === 'light' && current === 'dark') return 'topo';
+      return current;
+    });
+  }, [theme]);
 
   // Initialize Leaflet map once
   useEffect(() => {
@@ -147,6 +164,81 @@ export function MapCanvas({
       });
 
       const overlays = L.layerGroup().addTo(map);
+
+      map.on('contextmenu', (evt: L.LeafletMouseEvent) => {
+        const lat = Number(evt.latlng.lat.toFixed(5));
+        const lng = Number(evt.latlng.lng.toFixed(5));
+
+        const wrap = document.createElement('div');
+        wrap.style.fontFamily = 'IBM Plex Sans, system-ui, sans-serif';
+        wrap.style.fontSize = '12px';
+        wrap.style.minWidth = '156px';
+
+        const coordLine = document.createElement('div');
+        coordLine.style.fontFamily = 'IBM Plex Mono, monospace';
+        coordLine.style.fontSize = '11px';
+        coordLine.style.marginBottom = '6px';
+        coordLine.style.color = '#475569';
+        coordLine.textContent = `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+        wrap.appendChild(coordLine);
+
+        const actions: Array<{
+          role: 'tx' | 'repeater' | 'rx';
+          text: string;
+          color: string;
+        }> = [
+          { role: 'tx', text: 'Set TX here', color: '#026498' },
+          ...(modeRef.current === 'relay'
+            ? [{ role: 'repeater' as const, text: 'Set Repeater here', color: '#d97706' }]
+            : []),
+          { role: 'rx', text: 'Set RX here', color: '#0f7b55' },
+        ];
+
+        const btnCol = document.createElement('div');
+        btnCol.style.display = 'flex';
+        btnCol.style.flexDirection = 'column';
+        btnCol.style.gap = '4px';
+
+        const popup = L.popup({ closeButton: true, offset: [0, -4] })
+          .setLatLng(evt.latlng)
+          .setContent(wrap);
+
+        for (const action of actions) {
+          const btn = document.createElement('button');
+          btn.type = 'button';
+          btn.textContent = action.text;
+          btn.style.display = 'flex';
+          btn.style.alignItems = 'center';
+          btn.style.gap = '6px';
+          btn.style.width = '100%';
+          btn.style.padding = '5px 8px';
+          btn.style.borderRadius = '5px';
+          btn.style.border = '1px solid #d5dde5';
+          btn.style.background = '#ffffff';
+          btn.style.color = '#0f1b2b';
+          btn.style.fontWeight = '600';
+          btn.style.fontSize = '12px';
+          btn.style.cursor = 'pointer';
+          btn.style.textAlign = 'left';
+
+          const dot = document.createElement('span');
+          dot.style.width = '8px';
+          dot.style.height = '8px';
+          dot.style.borderRadius = '9999px';
+          dot.style.backgroundColor = action.color;
+          dot.style.flexShrink = '0';
+          btn.prepend(dot);
+
+          btn.addEventListener('click', () => {
+            onMoveSiteRef.current(action.role, { lat, lng });
+            map.closePopup(popup);
+          });
+          btnCol.appendChild(btn);
+        }
+
+        wrap.appendChild(btnCol);
+        popup.openOn(map);
+      });
 
       mapRef.current = map;
       overlayLayerRef.current = overlays;
@@ -169,7 +261,6 @@ export function MapCanvas({
         hoverMarkerRef.current = null;
       };
     } catch {
-      // Graceful no-op in non-layout environments such as jsdom tests
       return undefined;
     }
   }, []);
@@ -212,7 +303,6 @@ export function MapCanvas({
 
     overlays.clearLayers();
 
-    // Direct reference dashed path when in Relay mode
     if (scenario.mode === 'relay') {
       const directStroke = analysis.directReference
         ? verdictStroke(analysis.directReference.verdict)
@@ -231,7 +321,6 @@ export function MapCanvas({
       ).addTo(overlays);
     }
 
-    // Active hop polylines
     for (const hop of analysis.hops) {
       L.polyline(
         [
@@ -245,7 +334,9 @@ export function MapCanvas({
         },
       )
         .bindTooltip(
-          `${hop.label}: ${hop.distanceKm.toFixed(2)} km | Margin ${hop.fadeMarginDb.toFixed(1)} dB`,
+          createTooltipContent(
+            `${hop.label}: ${hop.distanceKm.toFixed(2)} km | Margin ${hop.fadeMarginDb.toFixed(1)} dB`,
+          ),
           { sticky: true },
         )
         .addTo(overlays);
@@ -256,7 +347,9 @@ export function MapCanvas({
           interactive: true,
         })
           .bindTooltip(
-            `Worst Clearance (${hop.hopId.toUpperCase()}): ${(hop.minClearanceRatio * 100).toFixed(0)}% F1 @ ${hop.worstPoint.distanceKm.toFixed(1)} km`,
+            createTooltipContent(
+              `Worst Clearance (${hop.hopId.toUpperCase()}): ${(hop.minClearanceRatio * 100).toFixed(0)}% F1 @ ${hop.worstPoint.distanceKm.toFixed(1)} km`,
+            ),
           )
           .addTo(overlays);
       }
@@ -273,7 +366,7 @@ export function MapCanvas({
         draggable: true,
         icon: createPinIcon(label, color),
       })
-        .bindTooltip(`${label}: ${siteName} (drag to move)`, {
+        .bindTooltip(createTooltipContent(`${label}: ${siteName} (drag to move)`), {
           direction: 'top',
           offset: [0, -34],
         })
@@ -300,7 +393,6 @@ export function MapCanvas({
     }
     addSiteMarker('rx', 'RX', '#0f7b55', scenario.rx.name, scenario.rx.coords);
 
-    // Fit map bounds automatically when switching scenario or mode
     const fitKey = `${scenario.id}:${scenario.mode}`;
     if (lastScenarioIdRef.current !== fitKey) {
       lastScenarioIdRef.current = fitKey;
@@ -352,14 +444,13 @@ export function MapCanvas({
   };
 
   return (
-    <div className="relative w-full h-full min-h-[280px]">
+    <div className="relative w-full h-full min-h-[320px]">
       <div
         ref={containerRef}
-        className="w-full h-full"
-        aria-label="Interactive RF topology map"
+        className="w-full h-full min-h-[320px]"
+        aria-label="Interactive RF topology map (right-click to move sites)"
       />
 
-      {/* Basemap & Fit Path Controls */}
       <div className="absolute bottom-3 right-3 z-[400] flex items-center gap-1.5">
         <div
           className="inline-flex rounded-md border p-0.5 text-xs shadow-md backdrop-blur-sm"

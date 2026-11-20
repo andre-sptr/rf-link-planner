@@ -17,6 +17,7 @@ import {
 } from '@linksight/rf-engine';
 import { initAccessibleFormValidation } from '../lib/formA11y';
 import { verdictColors } from './KpiRibbon';
+import { NumericField } from './NumericField';
 import { RelayComparisonCard } from './RelayComparisonCard';
 
 export interface InspectorPanelProps {
@@ -38,6 +39,25 @@ export interface InspectorPanelProps {
 }
 
 type InspectorTab = 'sites' | 'radio' | 'budget';
+type HardwareScope = 'all' | 'tx' | 'repeater' | 'rx';
+
+function hasHardwareDivergence(scenario: LinkScenario): boolean {
+  const sites =
+    scenario.mode === 'relay'
+      ? [scenario.tx, scenario.repeater, scenario.rx]
+      : [scenario.tx, scenario.rx];
+  const base = sites[0]!;
+  return sites.some(
+    (s) =>
+      s.txPowerDbm !== base.txPowerDbm ||
+      s.rxSensitivityDbm !== base.rxSensitivityDbm ||
+      s.antennaGainDbi !== base.antennaGainDbi ||
+      s.cableType !== base.cableType ||
+      s.cableLengthM !== base.cableLengthM ||
+      s.connectorLossDb !== base.connectorLossDb ||
+      s.duplexerLossDb !== base.duplexerLossDb,
+  );
+}
 
 function SiteEditorBlock({
   title,
@@ -54,31 +74,27 @@ function SiteEditorBlock({
 }) {
   const idPrefix = `site-${site.role}`;
   return (
-    <div
-      className="rounded-lg border p-2.5 space-y-2"
-      style={{
-        backgroundColor: 'var(--bg-elevated)',
-        borderColor: 'var(--border-subtle)',
-      }}
-    >
-      <div className="flex items-center justify-between gap-2">
-        <div className="flex items-center gap-2 min-w-0">
-          <span
-            className="inline-block w-2.5 h-2.5 rounded-full shrink-0"
-            style={{ backgroundColor: accentColor }}
-            aria-hidden="true"
-          />
-          <span className="text-xs font-semibold truncate">{title}</span>
-        </div>
+    <fieldset className="rf-fieldset space-y-2">
+      <legend className="rf-legend flex items-center gap-1.5">
         <span
-          className="font-mono-num text-[11px] px-1.5 py-0.5 rounded border"
+          className="inline-block w-2.5 h-2.5 rounded-full shrink-0"
+          style={{ backgroundColor: accentColor }}
+          aria-hidden="true"
+        />
+        <span>{title}</span>
+      </legend>
+
+      <div className="flex items-center justify-between gap-2 text-[11px]">
+        <span style={{ color: 'var(--text-secondary)' }}>Terrain Elevation</span>
+        <span
+          className="font-mono-num px-1.5 py-0.5 rounded border"
           style={{
             borderColor: 'var(--border-subtle)',
             backgroundColor: 'var(--bg-panel)',
             color: 'var(--text-secondary)',
           }}
         >
-          Ground {groundElevM.toFixed(0)} m
+          Ground {groundElevM.toFixed(0)} m ASL
         </span>
       </div>
 
@@ -98,85 +114,38 @@ function SiteEditorBlock({
       </div>
 
       <div className="grid grid-cols-3 gap-1.5">
-        <div>
-          <label className="block text-[11px] mb-0.5" htmlFor={`${idPrefix}-lat`}>
-            Lat (°)
-          </label>
-          <input
-            id={`${idPrefix}-lat`}
-            type="number"
-            className="rf-input font-mono-num w-full"
-            step="0.0001"
-            min={-85}
-            max={85}
-            required
-            data-error={`${idPrefix}-lat-err`}
-            value={site.coords.lat}
-            onChange={(e) => {
-              const v = Number(e.target.value);
-              if (Number.isFinite(v)) {
-                onChange({ coords: { ...site.coords, lat: v } });
-              }
-            }}
-          />
-          <span id={`${idPrefix}-lat-err`} className="field-error-msg">
-            -85 to 85
-          </span>
-        </div>
-
-        <div>
-          <label className="block text-[11px] mb-0.5" htmlFor={`${idPrefix}-lng`}>
-            Lng (°)
-          </label>
-          <input
-            id={`${idPrefix}-lng`}
-            type="number"
-            className="rf-input font-mono-num w-full"
-            step="0.0001"
-            min={-180}
-            max={180}
-            required
-            data-error={`${idPrefix}-lng-err`}
-            value={site.coords.lng}
-            onChange={(e) => {
-              const v = Number(e.target.value);
-              if (Number.isFinite(v)) {
-                onChange({ coords: { ...site.coords, lng: v } });
-              }
-            }}
-          />
-          <span id={`${idPrefix}-lng-err`} className="field-error-msg">
-            -180 to 180
-          </span>
-        </div>
-
-        <div>
-          <label className="block text-[11px] mb-0.5" htmlFor={`${idPrefix}-agl`}>
-            Tower (m)
-          </label>
-          <input
-            id={`${idPrefix}-agl`}
-            type="number"
-            className="rf-input font-mono-num w-full"
-            step="1"
-            min={1}
-            max={400}
-            required
-            data-error={`${idPrefix}-agl-err`}
-            value={site.antennaHeightM}
-            onChange={(e) => {
-              const v = Number(e.target.value);
-              if (Number.isFinite(v) && v >= 1) {
-                onChange({ antennaHeightM: v });
-              }
-            }}
-          />
-          <span id={`${idPrefix}-agl-err`} className="field-error-msg">
-            1 to 400 m
-          </span>
-        </div>
+        <NumericField
+          id={`${idPrefix}-lat`}
+          label="Lat (°)"
+          value={site.coords.lat}
+          min={-85}
+          max={85}
+          step="0.0001"
+          errorText="-85 to 85"
+          onCommit={(v) => onChange({ coords: { ...site.coords, lat: v } })}
+        />
+        <NumericField
+          id={`${idPrefix}-lng`}
+          label="Lng (°)"
+          value={site.coords.lng}
+          min={-180}
+          max={180}
+          step="0.0001"
+          errorText="-180 to 180"
+          onCommit={(v) => onChange({ coords: { ...site.coords, lng: v } })}
+        />
+        <NumericField
+          id={`${idPrefix}-agl`}
+          label="Tower (m)"
+          value={site.antennaHeightM}
+          min={1}
+          max={400}
+          step="1"
+          errorText="1 to 400 m"
+          onCommit={(v) => onChange({ antennaHeightM: v })}
+        />
       </div>
-    </div>
+    </fieldset>
   );
 }
 
@@ -192,12 +161,19 @@ export function InspectorPanel({
   onApplyTowerBoost,
 }: InspectorPanelProps) {
   const [tab, setTab] = useState<InspectorTab>('sites');
+  const [hardwareScope, setHardwareScope] = useState<HardwareScope>('all');
   const panelRef = useRef<HTMLElement | null>(null);
+
+  useEffect(() => {
+    if (scenario.mode === 'ptp' && hardwareScope === 'repeater') {
+      setHardwareScope('all');
+    }
+  }, [scenario.mode, hardwareScope]);
 
   useEffect(() => {
     if (!panelRef.current) return;
     return initAccessibleFormValidation(panelRef.current);
-  }, [tab, scenario.mode]);
+  }, [tab, scenario.mode, hardwareScope]);
 
   const txGround = analysis.hops[0]?.txSite.groundElevationM ?? scenario.tx.groundElevationM;
   const rptGround =
@@ -210,17 +186,30 @@ export function InspectorPanel({
 
   const hopsNeedingHeight = analysis.hops.filter((h) => h.heightAdvisor.needed);
 
+  const scopedSite: SiteNode =
+    hardwareScope === 'all' ? scenario.tx : scenario[hardwareScope];
+  const hardwareDiverges = hasHardwareDivergence(scenario);
+
+  const commitHardwarePatch = (patch: Partial<SiteNode>) => {
+    if (hardwareScope === 'all') {
+      onUpdateSite('tx', patch);
+      onUpdateSite('repeater', patch);
+      onUpdateSite('rx', patch);
+    } else {
+      onUpdateSite(hardwareScope, patch);
+    }
+  };
+
   return (
     <aside
       ref={panelRef}
-      className="w-full lg:w-[368px] shrink-0 border-r flex flex-col min-h-0"
+      className="order-2 lg:order-1 w-full lg:w-[368px] shrink-0 border-t lg:border-t-0 lg:border-r flex flex-col min-h-0"
       style={{
         backgroundColor: 'var(--bg-panel)',
         borderColor: 'var(--border-subtle)',
       }}
       aria-label="RF engineering controls and link budget"
     >
-      {/* Inspector Tab Switcher */}
       <div
         role="tablist"
         aria-label="Inspector sections"
@@ -265,7 +254,6 @@ export function InspectorPanel({
         })}
       </div>
 
-      {/* Scrollable Inspector Body */}
       <div className="flex-1 overflow-y-auto p-3 space-y-3">
         {tab === 'sites' && (
           <>
@@ -303,51 +291,61 @@ export function InspectorPanel({
               <RelayComparisonCard comparison={analysis.relayComparison} />
             )}
 
-            {hopsNeedingHeight.map((hop) => (
-              <div
-                key={hop.hopId}
-                className="rounded-lg border p-2.5 text-xs space-y-2"
-                style={{
-                  borderColor: 'var(--status-marginal)',
-                  backgroundColor: 'var(--status-marginal-bg)',
-                }}
-              >
-                <div className="flex items-start gap-2">
-                  <Sparkles
-                    className="w-4 h-4 shrink-0 mt-0.5"
-                    style={{ color: 'var(--status-marginal)' }}
-                    aria-hidden="true"
-                  />
-                  <div>
-                    <div className="font-semibold">
-                      Tower Height Advisor ({hop.hopId.toUpperCase()})
-                    </div>
-                    <p style={{ color: 'var(--text-secondary)' }}>
-                      Min clearance is {(hop.minClearanceRatio * 100).toFixed(0)}% F1 at{' '}
-                      {hop.heightAdvisor.worstDistanceKm.toFixed(1)} km. Add{' '}
-                      <strong className="font-mono-num">
-                        +{hop.heightAdvisor.extraBalancedM.toFixed(1)} m
-                      </strong>{' '}
-                      balanced (or +{hop.heightAdvisor.extraTxOnlyM.toFixed(1)} m TX / +
-                      {hop.heightAdvisor.extraRxOnlyM.toFixed(1)} m RX).
-                    </p>
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  onClick={() =>
-                    onApplyTowerBoost(hop.hopId, hop.heightAdvisor.extraBalancedM)
-                  }
-                  className="w-full py-1.5 px-2.5 rounded font-semibold cursor-pointer"
+            {hopsNeedingHeight.map((hop) => {
+              const singleEndHints = [
+                hop.heightAdvisor.extraTxOnlyM !== null
+                  ? `+${hop.heightAdvisor.extraTxOnlyM.toFixed(1)} m TX`
+                  : 'TX-only N/A',
+                hop.heightAdvisor.extraRxOnlyM !== null
+                  ? `+${hop.heightAdvisor.extraRxOnlyM.toFixed(1)} m RX`
+                  : 'RX-only N/A',
+              ].join(' / ');
+
+              return (
+                <div
+                  key={hop.hopId}
+                  className="rounded-lg border p-2.5 text-xs space-y-2"
                   style={{
-                    backgroundColor: 'var(--accent)',
-                    color: 'var(--accent-ink)',
+                    borderColor: 'var(--status-marginal)',
+                    backgroundColor: 'var(--status-marginal-bg)',
                   }}
                 >
-                  Optimize Tower Height (60% F1)
-                </button>
-              </div>
-            ))}
+                  <div className="flex items-start gap-2">
+                    <Sparkles
+                      className="w-4 h-4 shrink-0 mt-0.5"
+                      style={{ color: 'var(--status-marginal)' }}
+                      aria-hidden="true"
+                    />
+                    <div>
+                      <div className="font-semibold">
+                        Tower Height Advisor ({hop.hopId.toUpperCase()})
+                      </div>
+                      <p style={{ color: 'var(--text-secondary)' }}>
+                        Min clearance is {(hop.minClearanceRatio * 100).toFixed(0)}% F1 at{' '}
+                        {hop.heightAdvisor.worstDistanceKm.toFixed(1)} km. Add{' '}
+                        <strong className="font-mono-num">
+                          +{hop.heightAdvisor.extraBalancedM.toFixed(1)} m
+                        </strong>{' '}
+                        balanced ({singleEndHints}).
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      onApplyTowerBoost(hop.hopId, hop.heightAdvisor.extraBalancedM)
+                    }
+                    className="w-full py-1.5 px-2.5 rounded font-semibold cursor-pointer"
+                    style={{
+                      backgroundColor: 'var(--accent)',
+                      color: 'var(--accent-ink)',
+                    }}
+                  >
+                    Optimize Tower Height (60% F1)
+                  </button>
+                </div>
+              );
+            })}
 
             <SiteEditorBlock
               title="Transmitter (TX)"
@@ -405,41 +403,20 @@ export function InspectorPanel({
               </div>
             </div>
 
-            <div
-              className="rounded-lg border p-2.5 space-y-2.5 text-xs"
-              style={{
-                backgroundColor: 'var(--bg-elevated)',
-                borderColor: 'var(--border-subtle)',
-              }}
-            >
-              <div className="font-semibold">RF Channel &amp; Propagation</div>
+            <fieldset className="rf-fieldset space-y-2.5 text-xs">
+              <legend className="rf-legend">RF Channel &amp; Propagation</legend>
 
               <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className="block text-[11px] mb-0.5" htmlFor="freq-mhz">
-                    Frequency (MHz)
-                  </label>
-                  <input
-                    id="freq-mhz"
-                    type="number"
-                    className="rf-input font-mono-num w-full"
-                    min={30}
-                    max={60000}
-                    step="0.5"
-                    required
-                    data-error="freq-mhz-err"
-                    value={scenario.propagation.frequencyMhz}
-                    onChange={(e) => {
-                      const v = Number(e.target.value);
-                      if (Number.isFinite(v) && v >= 30) {
-                        onUpdatePropagation({ frequencyMhz: v });
-                      }
-                    }}
-                  />
-                  <span id="freq-mhz-err" className="field-error-msg">
-                    30 to 60,000 MHz
-                  </span>
-                </div>
+                <NumericField
+                  id="freq-mhz"
+                  label="Frequency (MHz)"
+                  value={scenario.propagation.frequencyMhz}
+                  min={30}
+                  max={60000}
+                  step="0.5"
+                  errorText="30 to 60,000 MHz"
+                  onCommit={(v) => onUpdatePropagation({ frequencyMhz: v })}
+                />
 
                 <div>
                   <label className="block text-[11px] mb-0.5" htmlFor="prop-model">
@@ -523,245 +500,204 @@ export function InspectorPanel({
               </div>
 
               <div className="grid grid-cols-3 gap-1.5">
-                <div>
-                  <label className="block text-[11px] mb-0.5" htmlFor="clutter-m">
-                    Clutter (m)
-                  </label>
-                  <input
-                    id="clutter-m"
-                    type="number"
-                    className="rf-input font-mono-num w-full"
-                    min={0}
-                    max={80}
-                    step="1"
-                    value={scenario.propagation.clutterHeightM}
-                    onChange={(e) => {
-                      const v = Number(e.target.value);
-                      if (Number.isFinite(v) && v >= 0) {
-                        onUpdatePropagation({ clutterHeightM: v });
-                      }
-                    }}
-                  />
-                </div>
-                <div>
-                  <label className="block text-[11px] mb-0.5" htmlFor="rain-db">
-                    Rain (dB)
-                  </label>
-                  <input
-                    id="rain-db"
-                    type="number"
-                    className="rf-input font-mono-num w-full"
-                    min={0}
-                    max={40}
-                    step="0.5"
-                    value={scenario.propagation.rainMarginDb}
-                    onChange={(e) => {
-                      const v = Number(e.target.value);
-                      if (Number.isFinite(v) && v >= 0) {
-                        onUpdatePropagation({ rainMarginDb: v });
-                      }
-                    }}
-                  />
-                </div>
-                <div>
-                  <label className="block text-[11px] mb-0.5" htmlFor="target-fm">
-                    Target (dB)
-                  </label>
-                  <input
-                    id="target-fm"
-                    type="number"
-                    className="rf-input font-mono-num w-full"
-                    min={0}
-                    max={50}
-                    step="1"
-                    value={scenario.propagation.targetFadeMarginDb}
-                    onChange={(e) => {
-                      const v = Number(e.target.value);
-                      if (Number.isFinite(v) && v >= 0) {
-                        onUpdatePropagation({ targetFadeMarginDb: v });
-                      }
-                    }}
-                  />
-                </div>
+                <NumericField
+                  id="clutter-m"
+                  label="Clutter (m)"
+                  value={scenario.propagation.clutterHeightM}
+                  min={0}
+                  max={80}
+                  step="1"
+                  errorText="0 to 80 m"
+                  onCommit={(v) => onUpdatePropagation({ clutterHeightM: v })}
+                />
+                <NumericField
+                  id="rain-db"
+                  label="Rain (dB)"
+                  value={scenario.propagation.rainMarginDb}
+                  min={0}
+                  max={40}
+                  step="0.5"
+                  errorText="0 to 40 dB"
+                  onCommit={(v) => onUpdatePropagation({ rainMarginDb: v })}
+                />
+                <NumericField
+                  id="target-fm"
+                  label="Target (dB)"
+                  value={scenario.propagation.targetFadeMarginDb}
+                  min={0}
+                  max={50}
+                  step="1"
+                  errorText="0 to 50 dB"
+                  onCommit={(v) => onUpdatePropagation({ targetFadeMarginDb: v })}
+                />
               </div>
-            </div>
+            </fieldset>
 
-            <div
-              className="rounded-lg border p-2.5 space-y-2.5 text-xs"
-              style={{
-                backgroundColor: 'var(--bg-elevated)',
-                borderColor: 'var(--border-subtle)',
-              }}
-            >
-              <div className="font-semibold">TX / RX Radio &amp; Feeder Hardware</div>
+            <fieldset className="rf-fieldset space-y-2.5 text-xs">
+              <legend className="rf-legend">Radio &amp; Feeder Hardware</legend>
 
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className="block text-[11px] mb-0.5" htmlFor="tx-pwr">
-                    TX Power (dBm)
-                  </label>
-                  <input
-                    id="tx-pwr"
-                    type="number"
-                    className="rf-input font-mono-num w-full"
-                    min={-10}
-                    max={70}
-                    step="0.5"
-                    value={scenario.tx.txPowerDbm}
-                    onChange={(e) => {
-                      const v = Number(e.target.value);
-                      if (Number.isFinite(v)) {
-                        onUpdateSite('tx', { txPowerDbm: v });
-                        onUpdateSite('repeater', { txPowerDbm: v });
-                      }
-                    }}
-                  />
-                  <div
-                    className="font-mono-num text-[10px] mt-0.5"
-                    style={{ color: 'var(--text-secondary)' }}
-                  >
-                    ≈ {dbmToWatts(scenario.tx.txPowerDbm).toFixed(2)} W
-                  </div>
+              <div className="space-y-1">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-[11px]" style={{ color: 'var(--text-secondary)' }}>
+                    Edit Scope
+                  </span>
+                  {hardwareScope === 'all' && hardwareDiverges && (
+                    <span
+                      className="text-[10px] px-1.5 py-0.5 rounded border"
+                      style={{
+                        color: 'var(--status-marginal)',
+                        borderColor: 'var(--status-marginal)',
+                        backgroundColor: 'var(--status-marginal-bg)',
+                      }}
+                    >
+                      Per-site overrides active
+                    </span>
+                  )}
                 </div>
 
-                <div>
-                  <label className="block text-[11px] mb-0.5" htmlFor="rx-sens">
-                    RX Sensitivity (dBm)
-                  </label>
-                  <input
-                    id="rx-sens"
-                    type="number"
-                    className="rf-input font-mono-num w-full"
-                    min={-150}
-                    max={-20}
-                    step="1"
-                    value={scenario.rx.rxSensitivityDbm}
-                    onChange={(e) => {
-                      const v = Number(e.target.value);
-                      if (Number.isFinite(v)) {
-                        onUpdateSite('rx', { rxSensitivityDbm: v });
-                        onUpdateSite('repeater', { rxSensitivityDbm: v });
-                      }
-                    }}
-                  />
+                <div
+                  role="group"
+                  aria-label="Hardware edit scope"
+                  className="grid gap-1 p-0.5 rounded border text-[11px]"
+                  style={{
+                    gridTemplateColumns:
+                      scenario.mode === 'relay' ? 'repeat(4, minmax(0, 1fr))' : 'repeat(3, minmax(0, 1fr))',
+                    borderColor: 'var(--border-subtle)',
+                    backgroundColor: 'var(--bg-panel)',
+                  }}
+                >
+                  {(
+                    [
+                      { id: 'all', label: 'All (Sync)' },
+                      { id: 'tx', label: 'TX' },
+                      ...(scenario.mode === 'relay'
+                        ? [{ id: 'repeater' as const, label: 'Repeater' }]
+                        : []),
+                      { id: 'rx', label: 'RX' },
+                    ] as Array<{ id: HardwareScope; label: string }>
+                  ).map((scopeItem) => {
+                    const active = hardwareScope === scopeItem.id;
+                    return (
+                      <button
+                        key={scopeItem.id}
+                        type="button"
+                        aria-pressed={active}
+                        onClick={() => setHardwareScope(scopeItem.id)}
+                        className="py-1 px-1.5 rounded font-medium cursor-pointer transition-colors"
+                        style={
+                          active
+                            ? {
+                                backgroundColor: 'var(--accent)',
+                                color: 'var(--accent-ink)',
+                              }
+                            : { color: 'var(--text-secondary)' }
+                        }
+                      >
+                        {scopeItem.label}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
 
               <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className="block text-[11px] mb-0.5" htmlFor="tx-gain">
-                    TX Gain (dBi)
-                  </label>
-                  <input
-                    id="tx-gain"
-                    type="number"
-                    className="rf-input font-mono-num w-full"
-                    min={-10}
-                    max={50}
-                    step="0.5"
-                    value={scenario.tx.antennaGainDbi}
-                    onChange={(e) => {
-                      const v = Number(e.target.value);
-                      if (Number.isFinite(v)) {
-                        onUpdateSite('tx', { antennaGainDbi: v });
-                      }
-                    }}
-                  />
-                  <div
-                    className="font-mono-num text-[10px] mt-0.5"
-                    style={{ color: 'var(--text-secondary)' }}
-                  >
-                    {dbiToDbd(scenario.tx.antennaGainDbi).toFixed(2)} dBd
-                  </div>
-                </div>
+                <NumericField
+                  id="hw-tx-pwr"
+                  label="TX Power (dBm)"
+                  value={scopedSite.txPowerDbm}
+                  min={-10}
+                  max={70}
+                  step="0.5"
+                  errorText="-10 to 70 dBm"
+                  helperText={`≈ ${dbmToWatts(scopedSite.txPowerDbm).toFixed(2)} W`}
+                  onCommit={(v) => commitHardwarePatch({ txPowerDbm: v })}
+                />
 
-                <div>
-                  <label className="block text-[11px] mb-0.5" htmlFor="rx-gain">
-                    RX Gain (dBi)
-                  </label>
-                  <input
-                    id="rx-gain"
-                    type="number"
-                    className="rf-input font-mono-num w-full"
-                    min={-10}
-                    max={50}
-                    step="0.5"
-                    value={scenario.rx.antennaGainDbi}
-                    onChange={(e) => {
-                      const v = Number(e.target.value);
-                      if (Number.isFinite(v)) {
-                        onUpdateSite('rx', { antennaGainDbi: v });
-                      }
-                    }}
-                  />
-                  <div
-                    className="font-mono-num text-[10px] mt-0.5"
-                    style={{ color: 'var(--text-secondary)' }}
-                  >
-                    {dbiToDbd(scenario.rx.antennaGainDbi).toFixed(2)} dBd
-                  </div>
-                </div>
+                <NumericField
+                  id="hw-rx-sens"
+                  label="RX Sensitivity (dBm)"
+                  value={scopedSite.rxSensitivityDbm}
+                  min={-150}
+                  max={-20}
+                  step="1"
+                  errorText="-150 to -20 dBm"
+                  onCommit={(v) => commitHardwarePatch({ rxSensitivityDbm: v })}
+                />
               </div>
 
               <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className="block text-[11px] mb-0.5" htmlFor="cable-type">
-                    Coax Feeder Type
-                  </label>
-                  <select
-                    id="cable-type"
-                    className="rf-input w-full"
-                    value={scenario.tx.cableType}
-                    onChange={(e) => {
-                      const cableType = e.target.value as CableTypeId;
-                      onUpdateSite('tx', { cableType });
-                      onUpdateSite('repeater', { cableType });
-                      onUpdateSite('rx', { cableType });
-                    }}
-                  >
-                    {Object.values(CABLE_LIBRARY).map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
+                <NumericField
+                  id="hw-ant-gain"
+                  label="Antenna Gain (dBi)"
+                  value={scopedSite.antennaGainDbi}
+                  min={-10}
+                  max={50}
+                  step="0.5"
+                  errorText="-10 to 50 dBi"
+                  helperText={`${dbiToDbd(scopedSite.antennaGainDbi).toFixed(2)} dBd`}
+                  onCommit={(v) => commitHardwarePatch({ antennaGainDbi: v })}
+                />
 
-                <div>
-                  <label className="block text-[11px] mb-0.5" htmlFor="cable-len">
-                    Feeder Length (m)
-                  </label>
-                  <input
-                    id="cable-len"
-                    type="number"
-                    className="rf-input font-mono-num w-full"
-                    min={0}
-                    max={500}
-                    step="1"
-                    value={scenario.tx.cableLengthM}
-                    onChange={(e) => {
-                      const v = Number(e.target.value);
-                      if (Number.isFinite(v) && v >= 0) {
-                        onUpdateSite('tx', { cableLengthM: v });
-                        onUpdateSite('rx', { cableLengthM: v });
-                      }
-                    }}
-                  />
-                  <div
-                    className="font-mono-num text-[10px] mt-0.5"
-                    style={{ color: 'var(--text-secondary)' }}
-                  >
-                    Loss:{' '}
-                    {calculateCableLossDb(
-                      scenario.tx.cableType,
-                      scenario.tx.cableLengthM,
-                      scenario.propagation.frequencyMhz,
-                    ).toFixed(2)}{' '}
-                    dB / end
-                  </div>
-                </div>
+                <NumericField
+                  id="hw-cable-len"
+                  label="Feeder Length (m)"
+                  value={scopedSite.cableLengthM}
+                  min={0}
+                  max={500}
+                  step="1"
+                  errorText="0 to 500 m"
+                  helperText={`Loss: ${calculateCableLossDb(
+                    scopedSite.cableType,
+                    scopedSite.cableLengthM,
+                    scenario.propagation.frequencyMhz,
+                  ).toFixed(2)} dB`}
+                  onCommit={(v) => commitHardwarePatch({ cableLengthM: v })}
+                />
               </div>
-            </div>
+
+              <div>
+                <label className="block text-[11px] mb-0.5" htmlFor="hw-cable-type">
+                  Coax Feeder Type
+                </label>
+                <select
+                  id="hw-cable-type"
+                  className="rf-input w-full"
+                  value={scopedSite.cableType}
+                  onChange={(e) =>
+                    commitHardwarePatch({ cableType: e.target.value as CableTypeId })
+                  }
+                >
+                  {Object.values(CABLE_LIBRARY).map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <NumericField
+                  id="hw-conn-loss"
+                  label="Connector Loss (dB)"
+                  value={scopedSite.connectorLossDb}
+                  min={0}
+                  max={20}
+                  step="0.1"
+                  errorText="0 to 20 dB"
+                  onCommit={(v) => commitHardwarePatch({ connectorLossDb: v })}
+                />
+                <NumericField
+                  id="hw-dup-loss"
+                  label="Duplexer Loss (dB)"
+                  value={scopedSite.duplexerLossDb}
+                  min={0}
+                  max={20}
+                  step="0.1"
+                  errorText="0 to 20 dB"
+                  onCommit={(v) => commitHardwarePatch({ duplexerLossDb: v })}
+                />
+              </div>
+            </fieldset>
           </>
         )}
 

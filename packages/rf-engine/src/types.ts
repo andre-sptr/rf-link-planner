@@ -97,8 +97,8 @@ export interface FresnelPoint {
 
 export interface TowerHeightRecommendation {
   needed: boolean;
-  extraTxOnlyM: number;
-  extraRxOnlyM: number;
+  extraTxOnlyM: number | null;
+  extraRxOnlyM: number | null;
   extraBalancedM: number;
   worstDistanceKm: number;
 }

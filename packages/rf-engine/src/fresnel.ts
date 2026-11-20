@@ -198,6 +198,8 @@ export function analyzeFresnelProfile(
   let maxDeficitBalanced = 0;
   let maxDeficitTxOnly = 0;
   let maxDeficitRxOnly = 0;
+  let txOnlyFeasible = true;
+  let rxOnlyFeasible = true;
 
   for (let i = 1; i < n - 1; i++) {
     const pt = points[i]!;
@@ -219,9 +221,13 @@ export function analyzeFresnelProfile(
       }
       if (1 - pt.fraction > 0.05) {
         maxDeficitTxOnly = Math.max(maxDeficitTxOnly, deficit / (1 - pt.fraction));
+      } else {
+        txOnlyFeasible = false;
       }
       if (pt.fraction > 0.05) {
         maxDeficitRxOnly = Math.max(maxDeficitRxOnly, deficit / pt.fraction);
+      } else {
+        rxOnlyFeasible = false;
       }
     }
   }
@@ -235,6 +241,19 @@ export function analyzeFresnelProfile(
   const diffractionLossDb = calculateKnifeEdgeLossDb(worstNu);
   const extraBalancedM = roundUpHalfMeter(maxDeficitBalanced);
 
+  const extraTxOnlyM =
+    extraBalancedM === 0
+      ? 0
+      : txOnlyFeasible && maxDeficitTxOnly <= 500
+        ? roundUpHalfMeter(maxDeficitTxOnly)
+        : null;
+  const extraRxOnlyM =
+    extraBalancedM === 0
+      ? 0
+      : rxOnlyFeasible && maxDeficitRxOnly <= 500
+        ? roundUpHalfMeter(maxDeficitRxOnly)
+        : null;
+
   return {
     points,
     maxFresnel1RadiusM,
@@ -245,8 +264,8 @@ export function analyzeFresnelProfile(
     diffractionLossDb,
     heightAdvisor: {
       needed: extraBalancedM > 0,
-      extraTxOnlyM: roundUpHalfMeter(maxDeficitTxOnly),
-      extraRxOnlyM: roundUpHalfMeter(maxDeficitRxOnly),
+      extraTxOnlyM,
+      extraRxOnlyM,
       extraBalancedM,
       worstDistanceKm: worstPoint?.distanceKm ?? 0,
     },

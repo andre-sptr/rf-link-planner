@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   DEMO_SCENARIOS,
   EQUIPMENT_PRESETS,
+  calculateGreatCircleMidpoint,
   cloneScenario,
   type LinkMode,
   type LinkScenario,
@@ -15,6 +16,7 @@ import {
 } from '../lib/shareCodec';
 
 const SAVED_SCENARIOS_KEY = 'linksight-saved-scenarios-v1';
+export const ACTIVE_DRAFT_STORAGE_KEY = 'linksight-active-draft-v1';
 
 export interface SavedScenarioEntry {
   savedAt: string;
@@ -56,6 +58,25 @@ function writeSavedScenarios(entries: SavedScenarioEntry[]): void {
   }
 }
 
+function readActiveDraft(): LinkScenario | null {
+  try {
+    const raw = window.localStorage.getItem(ACTIVE_DRAFT_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed: unknown = JSON.parse(raw);
+    return sanitizeScenario(parsed);
+  } catch {
+    return null;
+  }
+}
+
+function writeActiveDraft(scenario: LinkScenario): void {
+  try {
+    window.localStorage.setItem(ACTIVE_DRAFT_STORAGE_KEY, JSON.stringify(scenario));
+  } catch {
+    // ignore storage quota errors
+  }
+}
+
 function loadInitialState(): {
   scenario: LinkScenario;
   invalidUrlWarning: boolean;
@@ -74,12 +95,13 @@ function loadInitialState(): {
       return { scenario: decoded, invalidUrlWarning: false };
     }
     return {
-      scenario: cloneScenario(DEMO_SCENARIOS[0]!),
+      scenario: readActiveDraft() ?? cloneScenario(DEMO_SCENARIOS[0]!),
       invalidUrlWarning: true,
     };
   }
+
   return {
-    scenario: cloneScenario(DEMO_SCENARIOS[0]!),
+    scenario: readActiveDraft() ?? cloneScenario(DEMO_SCENARIOS[0]!),
     invalidUrlWarning: false,
   };
 }
@@ -97,6 +119,12 @@ export function usePlannerStore() {
   );
 
   useEffect(() => {
+    if (typeof window !== 'undefined') {
+      writeActiveDraft(scenario);
+    }
+  }, [scenario]);
+
+  useEffect(() => {
     if (!toastMessage) return;
     const timer = window.setTimeout(() => setToastMessage(null), 4000);
     return () => window.clearTimeout(timer);
@@ -111,6 +139,16 @@ export function usePlannerStore() {
     if (!found) return;
     setScenario(cloneScenario(found));
     setToastMessage(`Loaded preset: ${found.name}`);
+  }, []);
+
+  const resetToDefault = useCallback(() => {
+    try {
+      window.localStorage.removeItem(ACTIVE_DRAFT_STORAGE_KEY);
+    } catch {
+      // ignore storage errors
+    }
+    setScenario(cloneScenario(DEMO_SCENARIOS[0]!));
+    setToastMessage('Reset workspace to default scenario.');
   }, []);
 
   const setMode = useCallback((mode: LinkMode) => {
@@ -201,13 +239,10 @@ export function usePlannerStore() {
       ...prev,
       repeater: {
         ...prev.repeater,
-        coords: {
-          lat: Number(((prev.tx.coords.lat + prev.rx.coords.lat) / 2).toFixed(5)),
-          lng: Number(((prev.tx.coords.lng + prev.rx.coords.lng) / 2).toFixed(5)),
-        },
+        coords: calculateGreatCircleMidpoint(prev.tx.coords, prev.rx.coords),
       },
     }));
-    setToastMessage('Centered repeater at path midpoint.');
+    setToastMessage('Centered repeater at great-circle path midpoint.');
   }, []);
 
   const applyBalancedTowerBoost = useCallback(
@@ -318,6 +353,7 @@ export function usePlannerStore() {
     toastMessage,
     notify,
     selectPreset,
+    resetToDefault,
     setMode,
     updateSite,
     updatePropagation,

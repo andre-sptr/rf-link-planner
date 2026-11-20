@@ -8,6 +8,7 @@ import type {
 export interface KpiRibbonProps {
   analysis: LinkAnalysisResult;
   activeHop: HopAnalysis;
+  targetFadeMarginDb: number;
   elevationSource: ElevationSource;
   degraded: boolean;
   loading: boolean;
@@ -62,6 +63,7 @@ function sourceLabel(source: ElevationSource): string {
 export function KpiRibbon({
   analysis,
   activeHop,
+  targetFadeMarginDb,
   elevationSource,
   degraded,
   loading,
@@ -110,7 +112,7 @@ export function KpiRibbon({
           className="font-mono-num font-semibold"
           style={{
             color:
-              analysis.bottleneckFadeMarginDb >= 15
+              analysis.bottleneckFadeMarginDb >= targetFadeMarginDb
                 ? 'var(--status-pass)'
                 : analysis.bottleneckFadeMarginDb >= 0
                   ? 'var(--status-marginal)'

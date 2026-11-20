@@ -4,6 +4,15 @@ import tailwindcss from '@tailwindcss/vite';
 
 export default defineConfig({
   plugins: [react(), tailwindcss()],
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          'vendor-leaflet': ['leaflet'],
+        },
+      },
+    },
+  },
   server: {
     host: '127.0.0.1',
     port: 5173,

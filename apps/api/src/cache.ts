@@ -11,10 +11,12 @@ export interface CachedElevation {
 
 export interface ElevationCacheOptions {
   maxMemoryEntries?: number;
+  maxDiskEntries?: number;
   ttlMs?: number;
 }
 
 const DEFAULT_MAX_MEM = 20_000;
+const DEFAULT_MAX_DISK = 250_000;
 const DEFAULT_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
 export function elevationGridKey(lat: number, lng: number): string {
@@ -25,10 +27,17 @@ export class ElevationCache {
   private readonly db: Database.Database;
   private readonly memory = new Map<string, CachedElevation>();
   private readonly maxMemoryEntries: number;
+  private readonly maxDiskEntries: number;
   private readonly ttlMs: number;
-  private readonly selectStmt: Database.Statement<[string], { elevation_m: number; dataset: string; fetched_at: number }>;
+  private readonly selectStmt: Database.Statement<
+    [string],
+    { elevation_m: number; dataset: string; fetched_at: number }
+  >;
   private readonly upsertStmt: Database.Statement<[string, number, string, number]>;
   private readonly countStmt: Database.Statement<[], { cnt: number }>;
+  private readonly deleteExpiredStmt: Database.Statement<[number]>;
+  private readonly selectOldestKeysStmt: Database.Statement<[number], { key: string }>;
+  private readonly deleteOldestStmt: Database.Statement<[number]>;
 
   constructor(dbPath: string, options: ElevationCacheOptions = {}) {
     if (dbPath !== ':memory:') {
@@ -36,6 +45,7 @@ export class ElevationCache {
     }
 
     this.maxMemoryEntries = options.maxMemoryEntries ?? DEFAULT_MAX_MEM;
+    this.maxDiskEntries = options.maxDiskEntries ?? DEFAULT_MAX_DISK;
     this.ttlMs = options.ttlMs ?? DEFAULT_TTL_MS;
 
     this.db = new Database(dbPath);
@@ -49,6 +59,8 @@ export class ElevationCache {
         dataset TEXT NOT NULL,
         fetched_at INTEGER NOT NULL
       );
+      CREATE INDEX IF NOT EXISTS idx_elevation_fetched_at
+        ON elevation_points(fetched_at);
     `);
 
     this.selectStmt = this.db.prepare(
@@ -59,6 +71,15 @@ export class ElevationCache {
     );
     this.countStmt = this.db.prepare(
       'SELECT COUNT(*) AS cnt FROM elevation_points',
+    );
+    this.deleteExpiredStmt = this.db.prepare(
+      'DELETE FROM elevation_points WHERE fetched_at < ?',
+    );
+    this.selectOldestKeysStmt = this.db.prepare(
+      'SELECT key FROM elevation_points ORDER BY fetched_at ASC LIMIT ?',
+    );
+    this.deleteOldestStmt = this.db.prepare(
+      'DELETE FROM elevation_points WHERE key IN (SELECT key FROM elevation_points ORDER BY fetched_at ASC LIMIT ?)',
     );
   }
 
@@ -145,6 +166,38 @@ export class ElevationCache {
         fetchedAt: now,
       });
     }
+  }
+
+  /**
+   * Deletes TTL-expired entries and trims oldest rows if disk count exceeds maxDiskEntries.
+   */
+  prune(now = Date.now()): number {
+    const cutoff = now - this.ttlMs;
+
+    for (const [key, entry] of this.memory) {
+      if (entry.fetchedAt < cutoff) {
+        this.memory.delete(key);
+      }
+    }
+
+    const tx = this.db.transaction(() => {
+      const expiredChanges = this.deleteExpiredStmt.run(cutoff).changes;
+      const total = this.count();
+      let trimmedChanges = 0;
+
+      if (total > this.maxDiskEntries) {
+        const excess = total - this.maxDiskEntries;
+        const evictedRows = this.selectOldestKeysStmt.all(excess);
+        for (const row of evictedRows) {
+          this.memory.delete(row.key);
+        }
+        trimmedChanges = this.deleteOldestStmt.run(excess).changes;
+      }
+
+      return expiredChanges + trimmedChanges;
+    });
+
+    return tx();
   }
 
   count(): number {
