@@ -4,7 +4,7 @@ Interactive browser-based RF engineering workbench for planning **Point-to-Point
 
 ## Highlights
 
-- **Interactive Topographic Map (Leaflet):** Draggable TX, Repeater, and RX site markers with 4 basemap layers (`ESRI World Topo`, `ESRI Satellite`, `CARTO Voyager`, `CARTO DarkMatter`), status-colored hop vectors, automatic **worst Fresnel obstruction warning pins**, and live bidirectional chart-to-map crosshair synchronization.
+- **Interactive Topographic Map (Leaflet):** Draggable TX, Repeater, and RX site markers with 4 basemap layers (`ESRI World Topo`, `ESRI Satellite`, `OpenStreetMap`, `ESRI Dark Gray`), status-colored hop vectors, automatic **worst Fresnel obstruction warning pins**, and live bidirectional chart-to-map crosshair synchronization.
 - **Terrain Elevation & Fresnel Profile Engine:** Real-time SVG cross-section plotting ground elevation, urban/forest clutter, Earth curvature bulge ($k$-factor `4/3`, `1.0`, `2/3`), Line-of-Sight ray, **1st Fresnel Zone ($F_1$)**, and **60% $F_1$ clearance corridor**.
 - **Relay vs. Direct Comparison:** Automatically evaluates both individual relay hops and the direct TX → RX reference path to quantify fade margin improvement (dB) and Fresnel clearance gain (%).
 - **Tower Height Advisor:** Closed-form solver recommending the minimum extra tower height (balanced, TX-only, or RX-only) to restore $\ge 60\%$ $F_1$ clearance, with 1-click auto-apply.

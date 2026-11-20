@@ -14,7 +14,13 @@ export type BasemapId = 'topo' | 'satellite' | 'street' | 'dark';
 
 const BASEMAPS: Record<
   BasemapId,
-  { label: string; url: string; attribution: string; maxZoom: number }
+  {
+    label: string;
+    url: string;
+    overlayUrl?: string;
+    attribution: string;
+    maxZoom: number;
+  }
 > = {
   topo: {
     label: 'Topo',
@@ -30,15 +36,17 @@ const BASEMAPS: Record<
   },
   street: {
     label: 'Street',
-    url: 'https://a.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png',
-    attribution: '&copy; OpenStreetMap &copy; CARTO',
+    url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+    attribution: '&copy; OpenStreetMap contributors',
     maxZoom: 19,
   },
   dark: {
     label: 'Dark',
-    url: 'https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png',
-    attribution: '&copy; OpenStreetMap &copy; CARTO',
-    maxZoom: 19,
+    url: 'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}',
+    overlayUrl:
+      'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}',
+    attribution: 'Tiles &copy; Esri',
+    maxZoom: 16,
   },
 };
 
@@ -113,6 +121,7 @@ export function MapCanvas({
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<L.Map | null>(null);
   const tileLayerRef = useRef<L.TileLayer | null>(null);
+  const labelLayerRef = useRef<L.TileLayer | null>(null);
   const overlayLayerRef = useRef<L.LayerGroup | null>(null);
   const hoverMarkerRef = useRef<L.Marker | null>(null);
 
@@ -137,16 +146,9 @@ export function MapCanvas({
         zoomControl: true,
       });
 
-      const cfg = BASEMAPS[basemap];
-      const tileLayer = L.tileLayer(cfg.url, {
-        attribution: cfg.attribution,
-        maxZoom: cfg.maxZoom,
-      }).addTo(map);
-
       const overlays = L.layerGroup().addTo(map);
 
       mapRef.current = map;
-      tileLayerRef.current = tileLayer;
       overlayLayerRef.current = overlays;
 
       let ro: ResizeObserver | null = null;
@@ -162,6 +164,7 @@ export function MapCanvas({
         map.remove();
         mapRef.current = null;
         tileLayerRef.current = null;
+        labelLayerRef.current = null;
         overlayLayerRef.current = null;
         hoverMarkerRef.current = null;
       };
@@ -178,13 +181,27 @@ export function MapCanvas({
 
     if (tileLayerRef.current) {
       map.removeLayer(tileLayerRef.current);
+      tileLayerRef.current = null;
     }
+    if (labelLayerRef.current) {
+      map.removeLayer(labelLayerRef.current);
+      labelLayerRef.current = null;
+    }
+
     const cfg = BASEMAPS[basemap];
-    tileLayerRef.current = L.tileLayer(cfg.url, {
+    const baseLayer = L.tileLayer(cfg.url, {
       attribution: cfg.attribution,
       maxZoom: cfg.maxZoom,
+      zIndex: 0,
     }).addTo(map);
-    tileLayerRef.current.bringToBack();
+    tileLayerRef.current = baseLayer;
+
+    if (cfg.overlayUrl) {
+      labelLayerRef.current = L.tileLayer(cfg.overlayUrl, {
+        maxZoom: cfg.maxZoom,
+        zIndex: 1,
+      }).addTo(map);
+    }
   }, [basemap]);
 
   // Draw markers, paths, and obstruction warnings
