@@ -2,6 +2,7 @@ import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { DEMO_SCENARIOS, cloneScenario } from '@linksight/rf-engine';
 import { encodeScenarioToParam } from '../src/lib/shareCodec';
+import { WorkbenchApp } from '../src/WorkbenchApp';
 import { App } from '../src/App';
 
 function mockElevationFetch() {
@@ -67,7 +68,7 @@ describe('LinkSight RF workbench App', () => {
   it('renders default Relay scenario, switches to PtP, and opens native RF Math dialog', () => {
     mockElevationFetch();
 
-    render(<App />);
+    render(<WorkbenchApp />);
 
     expect(screen.getByText('LinkSight RF')).toBeTruthy();
     expect(screen.getByText('Direct Path vs. Repeater Relay')).toBeTruthy();
@@ -79,6 +80,10 @@ describe('LinkSight RF workbench App', () => {
     expect(
       screen.getByText('RF Engineering Equations & DEM Methodology'),
     ).toBeTruthy();
+    const formulaListWrapper =
+      screen.getByText('1. Free Space Path Loss (FSPL)').parentElement?.parentElement;
+    expect(formulaListWrapper?.className).toContain('mx-auto');
+    expect(formulaListWrapper?.className).toContain('w-full');
 
     fireEvent.click(screen.getByRole('tab', { name: 'Link Budget' }));
     expect(
@@ -89,7 +94,7 @@ describe('LinkSight RF workbench App', () => {
   it('allows clearing and retyping numeric fields without snapping back or zeroing coordinates', () => {
     mockElevationFetch();
 
-    render(<App />);
+    render(<WorkbenchApp />);
 
     const txTower = screen.getByLabelText('Tower (m)', {
       selector: '#site-tx-agl',
@@ -115,7 +120,7 @@ describe('LinkSight RF workbench App', () => {
   it('supports independent Repeater hardware tuning including connector and duplexer losses', () => {
     mockElevationFetch();
 
-    render(<App />);
+    render(<WorkbenchApp />);
 
     fireEvent.click(screen.getByRole('tab', { name: 'Radio & Model' }));
 
@@ -144,7 +149,7 @@ describe('LinkSight RF workbench App', () => {
     expect(screen.getByText('-3.70 dB')).toBeTruthy();
   });
 
-  it('treats malicious HTML payloads in shared ?s= site names as plain text (no DOM XSS)', () => {
+  it('treats malicious HTML payloads in shared ?s= site names as plain text (no DOM XSS)', async () => {
     mockElevationFetch();
 
     const tampered = cloneScenario(DEMO_SCENARIOS[1]!);
@@ -153,17 +158,17 @@ describe('LinkSight RF workbench App', () => {
     window.history.replaceState(null, '', `?s=${param}`);
 
     const { container } = render(<App />);
-    expect(container.querySelector('img[src="x"]')).toBeNull();
-    const txNameInput = screen.getByLabelText('Site Label', {
+    const txNameInput = (await screen.findByLabelText('Site Label', {
       selector: '#site-tx-name',
-    }) as HTMLInputElement;
+    })) as HTMLInputElement;
+    expect(container.querySelector('img[src="x"]')).toBeNull();
     expect(txNameInput.value).toBe('<img src=x onerror=alert(1)>');
   });
 
   it('updates Fade Margin KPI color threshold dynamically when Target Fade Margin changes', () => {
     mockElevationFetch();
 
-    render(<App />);
+    render(<WorkbenchApp />);
 
     fireEvent.click(screen.getByRole('button', { name: 'Point-to-Point' }));
     fireEvent.click(screen.getByRole('tab', { name: 'Radio & Model' }));
@@ -176,5 +181,80 @@ describe('LinkSight RF workbench App', () => {
     const fadeMarginLabel = screen.getByText('Fade Margin');
     const fadeMarginVal = fadeMarginLabel.nextElementSibling as HTMLElement;
     expect(fadeMarginVal.style.color).toBe('var(--status-marginal)');
+  });
+
+  it('collapses and restores the floating Inspector and Fresnel Profile drawers', () => {
+    mockElevationFetch();
+
+    render(<WorkbenchApp />);
+
+    const aside = screen.getByRole('complementary', {
+      name: 'RF engineering controls and link budget',
+    });
+    expect(aside.getAttribute('data-open')).toBe('true');
+
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Collapse RF Inspector drawer' }),
+    );
+    expect(aside.getAttribute('data-open')).toBe('false');
+
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Open RF Inspector drawer' }),
+    );
+    expect(aside.getAttribute('data-open')).toBe('true');
+
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Minimize Fresnel profile chart' }),
+    );
+    expect(
+      screen.queryByRole('img', { name: /Terrain elevation and 1st Fresnel/i }),
+    ).toBeNull();
+
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Show Fresnel profile chart' }),
+    );
+    expect(
+      screen.getByRole('img', { name: /Terrain elevation and 1st Fresnel/i }),
+    ).toBeTruthy();
+  });
+
+  it('opens the Command Palette via Ctrl+K, filters commands, and executes actions', () => {
+    mockElevationFetch();
+
+    render(<WorkbenchApp />);
+
+    fireEvent.keyDown(window, { key: 'k', ctrlKey: true });
+    const searchInput = screen.getByLabelText('Filter commands') as HTMLInputElement;
+    expect(searchInput).toBeTruthy();
+
+    fireEvent.change(searchInput, { target: { value: 'Jakarta' } });
+    const jakartaBtn = screen.getByRole('button', {
+      name: /Jakarta – Depok 5\.8 GHz/i,
+    });
+    fireEvent.click(jakartaBtn);
+
+    expect(screen.queryByLabelText('Filter commands')).toBeNull();
+    const txNameInput = screen.getByLabelText('Site Label', {
+      selector: '#site-tx-name',
+    }) as HTMLInputElement;
+    expect(txNameInput.value).toBe('Kuningan Rooftop Mast');
+  });
+
+  it('toggles 3D/2D map mode and switches basemap presets', () => {
+    mockElevationFetch();
+
+    render(<WorkbenchApp />);
+
+    const btn3D = screen.getByRole('button', { name: '3D' });
+    expect(btn3D.getAttribute('aria-pressed')).toBe('true');
+    fireEvent.click(btn3D);
+
+    const btn2D = screen.getByRole('button', { name: '2D' });
+    expect(btn2D.getAttribute('aria-pressed')).toBe('false');
+
+    const satBtn = screen.getByRole('button', { name: 'Satellite' });
+    expect(satBtn.getAttribute('aria-pressed')).toBe('false');
+    fireEvent.click(satBtn);
+    expect(satBtn.getAttribute('aria-pressed')).toBe('true');
   });
 });

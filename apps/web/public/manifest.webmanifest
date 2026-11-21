@@ -4,18 +4,28 @@
   "description": "Interactive RF link budget, single-repeater relay, SRTM terrain elevation, and 1st Fresnel zone clearance planner.",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#0d131c",
-  "theme_color": "#026498",
+  "background_color": "#090d14",
+  "theme_color": "#111722",
   "icons": [
     {
-      "src": "/favicon.svg",
-      "sizes": "any",
-      "type": "image/svg+xml"
+      "src": "/favicon-32.png",
+      "sizes": "32x32",
+      "type": "image/png"
+    },
+    {
+      "src": "/apple-icon.png",
+      "sizes": "180x180",
+      "type": "image/png"
+    },
+    {
+      "src": "/favicon.png",
+      "sizes": "256x256",
+      "type": "image/png"
     },
     {
       "src": "/favicon.ico",
-      "sizes": "32x32",
-      "type": "image/x-icon"
+      "sizes": "16x16 32x32 48x48 64x64 128x128 256x256",
+      "type="image/x-icon"
     }
   ]
 }

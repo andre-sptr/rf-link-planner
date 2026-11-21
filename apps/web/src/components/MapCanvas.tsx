@@ -1,55 +1,93 @@
-import { useEffect, useRef, useState } from 'react';
-import L from 'leaflet';
-import 'leaflet/dist/leaflet.css';
-import { Maximize2 } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  AttributionControl,
+  GeoJSONSource,
+  LngLatBounds,
+  MapLibreMap,
+  Marker,
+  setWorkerUrl,
+  type LayerSpecification,
+  type MapLayerMouseEvent,
+  type MapMouseEvent,
+  type PaddingOptions,
+  type StyleSpecification,
+} from 'maplibre-gl';
+import maplibreWorkerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url';
+import 'maplibre-gl/dist/maplibre-gl.css';
+
+if (typeof window !== 'undefined' && maplibreWorkerUrl) {
+  setWorkerUrl(maplibreWorkerUrl);
+}
+import {
+  Compass,
+  Copy,
+  Maximize2,
+  Minus,
+  Plus,
+  SlidersHorizontal,
+  X,
+} from 'lucide-react';
 import type {
   FresnelPoint,
   LinkAnalysisResult,
   LinkMode,
   LinkScenario,
   LinkVerdict,
+  SiteRole,
 } from '@linksight/rf-engine';
 import type { ResolvedTheme } from '../lib/theme';
+import type { FresnelDrawerState } from './FresnelProfileChart';
 
-export type BasemapId = 'topo' | 'satellite' | 'street' | 'dark';
+export type BasemapId = 'topo' | 'clean' | 'dark' | 'satellite';
 
-const BASEMAPS: Record<
-  BasemapId,
-  {
-    label: string;
-    url: string;
-    overlayUrl?: string;
-    attribution: string;
-    maxZoom: number;
-  }
-> = {
-  topo: {
-    label: 'Topo',
-    url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}',
-    attribution: 'Tiles &copy; Esri',
-    maxZoom: 18,
-  },
-  satellite: {
-    label: 'Satellite',
-    url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
-    attribution: 'Imagery &copy; Esri',
-    maxZoom: 18,
-  },
-  street: {
-    label: 'Street',
-    url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-    attribution: '&copy; OpenStreetMap contributors',
-    maxZoom: 19,
-  },
-  dark: {
-    label: 'Dark',
-    url: 'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}',
-    overlayUrl:
-      'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}',
-    attribution: 'Tiles &copy; Esri',
-    maxZoom: 16,
-  },
+const BASEMAPS: Record<BasemapId, { label: string }> = {
+  topo: { label: 'Topo 3D' },
+  clean: { label: 'Studio' },
+  dark: { label: 'Dark' },
+  satellite: { label: 'Satellite' },
 };
+
+const MAPTERHORN_TILEJSON = 'https://tiles.mapterhorn.com/tilejson.json';
+
+const SATELLITE_STYLE: StyleSpecification = {
+  version: 8,
+  sources: {
+    'esri-imagery': {
+      type: 'raster',
+      tiles: [
+        'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+      ],
+      tileSize: 256,
+      maxzoom: 18,
+      attribution: 'Imagery &copy; Esri',
+    },
+    'esri-labels': {
+      type: 'raster',
+      tiles: [
+        'https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}',
+      ],
+      tileSize: 256,
+      maxzoom: 16,
+    },
+  },
+  layers: [
+    { id: 'esri-imagery', type: 'raster', source: 'esri-imagery' },
+    { id: 'esri-labels', type: 'raster', source: 'esri-labels' },
+  ],
+};
+
+function getMapStyle(basemap: BasemapId): string | StyleSpecification {
+  switch (basemap) {
+    case 'topo':
+      return 'https://tiles.openfreemap.org/styles/liberty';
+    case 'clean':
+      return 'https://tiles.openfreemap.org/styles/positron';
+    case 'dark':
+      return 'https://tiles.openfreemap.org/styles/dark';
+    case 'satellite':
+      return SATELLITE_STYLE;
+  }
+}
 
 function verdictStroke(verdict: LinkVerdict): string {
   switch (verdict) {
@@ -64,46 +102,43 @@ function verdictStroke(verdict: LinkVerdict): string {
   }
 }
 
-function createTooltipContent(text: string): HTMLSpanElement {
-  const span = document.createElement('span');
-  span.textContent = text;
-  return span;
+function roleColorHex(role: SiteRole): string {
+  switch (role) {
+    case 'tx':
+      return '#0066cc';
+    case 'repeater':
+      return '#d97706';
+    case 'rx':
+      return '#059669';
+  }
 }
 
-function createPinIcon(label: string, fill: string): L.DivIcon {
-  return L.divIcon({
-    className: 'linksight-pin-wrap',
-    iconSize: [34, 40],
-    iconAnchor: [17, 38],
-    html: `<svg width="34" height="40" viewBox="0 0 34 40" xmlns="http://www.w3.org/2000/svg">
-      <path d="M17 2C9.8 2 4 7.8 4 15c0 9.6 13 23 13 23s13-13.4 13-23c0-7.2-5.8-13-13-13z" fill="${fill}" stroke="#ffffff" stroke-width="2"/>
-      <text x="17" y="18.5" text-anchor="middle" fill="#ffffff" font-size="9.5" font-weight="700" font-family="IBM Plex Mono, monospace">${label}</text>
-    </svg>`,
-  });
+function roleShortLabel(role: SiteRole): string {
+  switch (role) {
+    case 'tx':
+      return 'TX';
+    case 'repeater':
+      return 'RPT';
+    case 'rx':
+      return 'RX';
+  }
 }
 
-function createHazardIcon(): L.DivIcon {
-  return L.divIcon({
-    className: 'linksight-pin-wrap',
-    iconSize: [24, 24],
-    iconAnchor: [12, 12],
-    html: `<svg width="24" height="24" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-      <polygon points="12,3 22,20 2,20" fill="#ef4444" stroke="#ffffff" stroke-width="1.8"/>
-      <text x="12" y="17.5" text-anchor="middle" fill="#ffffff" font-size="10" font-weight="700">!</text>
-    </svg>`,
-  });
-}
-
-function createHoverCrosshairIcon(): L.DivIcon {
-  return L.divIcon({
-    className: 'linksight-pin-wrap',
-    iconSize: [18, 18],
-    iconAnchor: [9, 9],
-    html: `<svg width="18" height="18" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg">
-      <circle cx="9" cy="9" r="6" fill="none" stroke="#0284c7" stroke-width="2.5"/>
-      <circle cx="9" cy="9" r="2.2" fill="#ffffff" stroke="#0284c7" stroke-width="1.2"/>
-    </svg>`,
-  });
+function hasWebGLSupport(): boolean {
+  if (typeof window === 'undefined' || typeof document === 'undefined') {
+    return false;
+  }
+  try {
+    const canvas = document.createElement('canvas');
+    return Boolean(
+      window.WebGLRenderingContext &&
+        (canvas.getContext('webgl2') ||
+          canvas.getContext('webgl') ||
+          canvas.getContext('experimental-webgl')),
+    );
+  } catch {
+    return false;
+  }
 }
 
 export interface MapCanvasProps {
@@ -111,390 +146,1020 @@ export interface MapCanvasProps {
   analysis: LinkAnalysisResult;
   theme: ResolvedTheme;
   hoveredPoint: FresnelPoint | null;
-  onMoveSite: (
-    role: 'tx' | 'repeater' | 'rx',
-    coords: { lat: number; lng: number },
-  ) => void;
+  selectedHopId: 'direct' | 'hop1' | 'hop2';
+  selectedSiteRole: SiteRole | null;
+  basemap: BasemapId;
+  is3D: boolean;
+  inspectorOpen: boolean;
+  fresnelState: FresnelDrawerState;
+  fresnelHeightPx: number;
+  zenMode: boolean;
+  fitTrigger: number;
+  focusSiteTrigger: { role: SiteRole; seq: number } | null;
+  onChangeBasemap: (basemap: BasemapId) => void;
+  onToggle3D: () => void;
+  onSelectHop: (hopId: 'direct' | 'hop1' | 'hop2') => void;
+  onSelectSite: (role: SiteRole | null) => void;
+  onMoveSite: (role: SiteRole, coords: { lat: number; lng: number }) => void;
+  onUpdateSiteHeight: (role: SiteRole, antennaHeightM: number) => void;
+  onEditInInspector: (role: SiteRole) => void;
+  onNotify?: (msg: string) => void;
 }
+
+interface SiteMarkerHandle {
+  marker: Marker;
+  btn: HTMLButtonElement;
+  pill: HTMLSpanElement;
+  dragging: boolean;
+}
+
+type LineGeoJsonData = Parameters<GeoJSONSource['setData']>[0];
+type LineFeature = {
+  type: 'Feature';
+  properties: Record<string, unknown>;
+  geometry: { type: 'LineString'; coordinates: [number, number][] };
+};
 
 export function MapCanvas({
   scenario,
   analysis,
   theme,
   hoveredPoint,
+  selectedHopId,
+  selectedSiteRole,
+  basemap,
+  is3D,
+  inspectorOpen,
+  fresnelState,
+  fresnelHeightPx,
+  zenMode,
+  fitTrigger,
+  focusSiteTrigger,
+  onChangeBasemap,
+  onToggle3D,
+  onSelectHop,
+  onSelectSite,
   onMoveSite,
+  onUpdateSiteHeight,
+  onEditInInspector,
+  onNotify,
 }: MapCanvasProps) {
+  const wrapperRef = useRef<HTMLDivElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
-  const mapRef = useRef<L.Map | null>(null);
-  const tileLayerRef = useRef<L.TileLayer | null>(null);
-  const labelLayerRef = useRef<L.TileLayer | null>(null);
-  const overlayLayerRef = useRef<L.LayerGroup | null>(null);
-  const hoverMarkerRef = useRef<L.Marker | null>(null);
+  const mapRef = useRef<MapLibreMap | null>(null);
+  const styleReadyRef = useRef<boolean>(false);
+  const appliedBasemapRef = useRef<BasemapId>(basemap);
+  const lastScenarioKeyRef = useRef<string>('');
 
-  const [basemap, setBasemap] = useState<BasemapId>(
-    theme === 'dark' ? 'dark' : 'topo',
+  const siteMarkersRef = useRef<Partial<Record<SiteRole, SiteMarkerHandle>>>({});
+  const hazardMarkersRef = useRef<Marker[]>([]);
+  const hoverMarkerRef = useRef<Marker | null>(null);
+
+  const [bearingDeg, setBearingDeg] = useState(is3D ? -16 : 0);
+  const [popoverScreenPos, setPopoverScreenPos] = useState<{ x: number; y: number } | null>(
+    null,
   );
-  const lastScenarioIdRef = useRef<string>('');
+  const [ctxMenu, setCtxMenu] = useState<{
+    x: number;
+    y: number;
+    lat: number;
+    lng: number;
+  } | null>(null);
+  const [hoveredHopTooltip, setHoveredHopTooltip] = useState<{
+    x: number;
+    y: number;
+    label: string;
+    distanceKm: number;
+    fadeMarginDb: number;
+    clearancePct: number;
+  } | null>(null);
 
-  const onMoveSiteRef = useRef(onMoveSite);
-  onMoveSiteRef.current = onMoveSite;
-
+  // Refs for fresh state inside MapLibre callbacks
+  const scenarioRef = useRef(scenario);
+  scenarioRef.current = scenario;
+  const analysisRef = useRef(analysis);
+  analysisRef.current = analysis;
+  const selectedHopRef = useRef(selectedHopId);
+  selectedHopRef.current = selectedHopId;
+  const selectedSiteRef = useRef(selectedSiteRole);
+  selectedSiteRef.current = selectedSiteRole;
+  const basemapRef = useRef(basemap);
+  basemapRef.current = basemap;
+  const is3DRef = useRef(is3D);
+  is3DRef.current = is3D;
+  const themeRef = useRef(theme);
+  themeRef.current = theme;
   const modeRef = useRef<LinkMode>(scenario.mode);
   modeRef.current = scenario.mode;
 
-  // Sync theme toggle between Topo and Dark while preserving Satellite/Street choices
-  useEffect(() => {
-    setBasemap((current) => {
-      if (theme === 'dark' && current === 'topo') return 'dark';
-      if (theme === 'light' && current === 'dark') return 'topo';
-      return current;
-    });
-  }, [theme]);
+  const onMoveSiteRef = useRef(onMoveSite);
+  onMoveSiteRef.current = onMoveSite;
+  const onSelectHopRef = useRef(onSelectHop);
+  onSelectHopRef.current = onSelectHop;
+  const onSelectSiteRef = useRef(onSelectSite);
+  onSelectSiteRef.current = onSelectSite;
 
-  // Initialize Leaflet map once
-  useEffect(() => {
-    const el = containerRef.current;
-    if (!el || mapRef.current) return;
+  const computeHudPadding = useCallback((): PaddingOptions => {
+    const w = wrapperRef.current?.clientWidth ?? 1280;
+    const isDesktop = w >= 1024;
+    if (!isDesktop) {
+      return { top: 44, bottom: 44, left: 44, right: 44 };
+    }
+    if (zenMode) {
+      return { top: 64, bottom: 84, left: 64, right: 80 };
+    }
+    const bottomChartSpace =
+      fresnelState === 'minimized'
+        ? 84
+        : (fresnelState === 'expanded' ? 330 : fresnelHeightPx) + 108;
 
-    try {
-      const map = L.map(el, {
-        center: [scenario.tx.coords.lat, scenario.tx.coords.lng],
-        zoom: 11,
-        zoomControl: true,
+    return {
+      top: w >= 1440 ? 84 : 128,
+      left: inspectorOpen ? (w >= 1280 ? 424 : 388) : 64,
+      right: 84,
+      bottom: Math.min(460, bottomChartSpace),
+    };
+  }, [zenMode, inspectorOpen, fresnelState, fresnelHeightPx]);
+
+  const fitAllSites = useCallback(
+    (animate = true) => {
+      const map = mapRef.current;
+      if (!map) return;
+      const sc = scenarioRef.current;
+      const bounds = new LngLatBounds(
+        [sc.tx.coords.lng, sc.tx.coords.lat],
+        [sc.tx.coords.lng, sc.tx.coords.lat],
+      );
+      bounds.extend([sc.rx.coords.lng, sc.rx.coords.lat]);
+      if (sc.mode === 'relay') {
+        bounds.extend([sc.repeater.coords.lng, sc.repeater.coords.lat]);
+      }
+      map.fitBounds(bounds, {
+        padding: computeHudPadding(),
+        maxZoom: 13.5,
+        pitch: is3DRef.current ? 52 : 0,
+        bearing: is3DRef.current ? -16 : 0,
+        duration: animate ? 620 : 0,
       });
+    },
+    [computeHudPadding],
+  );
 
-      const overlays = L.layerGroup().addTo(map);
+  const buildGeoJsonData = useCallback(() => {
+    const sc = scenarioRef.current;
+    const an = analysisRef.current;
+    const selHop = selectedHopRef.current;
 
-      map.on('contextmenu', (evt: L.LeafletMouseEvent) => {
-        const lat = Number(evt.latlng.lat.toFixed(5));
-        const lng = Number(evt.latlng.lng.toFixed(5));
-
-        const wrap = document.createElement('div');
-        wrap.style.fontFamily = 'IBM Plex Sans, system-ui, sans-serif';
-        wrap.style.fontSize = '12px';
-        wrap.style.minWidth = '156px';
-
-        const coordLine = document.createElement('div');
-        coordLine.style.fontFamily = 'IBM Plex Mono, monospace';
-        coordLine.style.fontSize = '11px';
-        coordLine.style.marginBottom = '6px';
-        coordLine.style.color = '#475569';
-        coordLine.textContent = `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
-        wrap.appendChild(coordLine);
-
-        const actions: Array<{
-          role: 'tx' | 'repeater' | 'rx';
-          text: string;
-          color: string;
-        }> = [
-          { role: 'tx', text: 'Set TX here', color: '#026498' },
-          ...(modeRef.current === 'relay'
-            ? [{ role: 'repeater' as const, text: 'Set Repeater here', color: '#d97706' }]
-            : []),
-          { role: 'rx', text: 'Set RX here', color: '#0f7b55' },
-        ];
-
-        const btnCol = document.createElement('div');
-        btnCol.style.display = 'flex';
-        btnCol.style.flexDirection = 'column';
-        btnCol.style.gap = '4px';
-
-        const popup = L.popup({ closeButton: true, offset: [0, -4] })
-          .setLatLng(evt.latlng)
-          .setContent(wrap);
-
-        for (const action of actions) {
-          const btn = document.createElement('button');
-          btn.type = 'button';
-          btn.textContent = action.text;
-          btn.style.display = 'flex';
-          btn.style.alignItems = 'center';
-          btn.style.gap = '6px';
-          btn.style.width = '100%';
-          btn.style.padding = '5px 8px';
-          btn.style.borderRadius = '5px';
-          btn.style.border = '1px solid #d5dde5';
-          btn.style.background = '#ffffff';
-          btn.style.color = '#0f1b2b';
-          btn.style.fontWeight = '600';
-          btn.style.fontSize = '12px';
-          btn.style.cursor = 'pointer';
-          btn.style.textAlign = 'left';
-
-          const dot = document.createElement('span');
-          dot.style.width = '8px';
-          dot.style.height = '8px';
-          dot.style.borderRadius = '9999px';
-          dot.style.backgroundColor = action.color;
-          dot.style.flexShrink = '0';
-          btn.prepend(dot);
-
-          btn.addEventListener('click', () => {
-            onMoveSiteRef.current(action.role, { lat, lng });
-            map.closePopup(popup);
-          });
-          btnCol.appendChild(btn);
-        }
-
-        wrap.appendChild(btnCol);
-        popup.openOn(map);
+    const directFeatures: LineFeature[] = [];
+    if (sc.mode === 'relay') {
+      const directStroke = an.directReference
+        ? verdictStroke(an.directReference.verdict)
+        : '#64748b';
+      directFeatures.push({
+        type: 'Feature',
+        properties: { color: directStroke },
+        geometry: {
+          type: 'LineString',
+          coordinates: [
+            [sc.tx.coords.lng, sc.tx.coords.lat],
+            [sc.rx.coords.lng, sc.rx.coords.lat],
+          ],
+        },
       });
+    }
 
-      mapRef.current = map;
-      overlayLayerRef.current = overlays;
+    const hopFeatures: LineFeature[] = an.hops.map((hop) => ({
+      type: 'Feature',
+      properties: {
+        hopId: hop.hopId,
+        label: hop.label,
+        color: verdictStroke(hop.verdict),
+        isSelected: hop.hopId === selHop,
+        distanceKm: Number(hop.distanceKm.toFixed(2)),
+        fadeMarginDb: Number(hop.fadeMarginDb.toFixed(1)),
+        clearancePct: Math.round(hop.minClearanceRatio * 100),
+      },
+      geometry: {
+        type: 'LineString',
+        coordinates: [
+          [hop.txSite.coords.lng, hop.txSite.coords.lat],
+          [hop.rxSite.coords.lng, hop.rxSite.coords.lat],
+        ],
+      },
+    }));
 
-      let ro: ResizeObserver | null = null;
-      if (typeof ResizeObserver !== 'undefined') {
-        ro = new ResizeObserver(() => {
-          map.invalidateSize({ animate: false });
+    return {
+      direct: { type: 'FeatureCollection', features: directFeatures } as LineGeoJsonData,
+      hops: { type: 'FeatureCollection', features: hopFeatures } as LineGeoJsonData,
+    };
+  }, []);
+
+  const syncPathLayers = useCallback(
+    (map: MapLibreMap) => {
+      if (!styleReadyRef.current) return;
+      const data = buildGeoJsonData();
+
+      const directSrc = map.getSource('rf-direct-ref') as GeoJSONSource | undefined;
+      if (directSrc) {
+        directSrc.setData(data.direct);
+      } else {
+        map.addSource('rf-direct-ref', { type: 'geojson', data: data.direct });
+        map.addLayer({
+          id: 'rf-direct-ref-line',
+          type: 'line',
+          source: 'rf-direct-ref',
+          layout: { 'line-cap': 'round', 'line-join': 'round' },
+          paint: {
+            'line-color': ['get', 'color'],
+            'line-width': 2.2,
+            'line-dasharray': [3, 3],
+            'line-opacity': 0.78,
+          },
         });
-        ro.observe(el);
       }
 
-      return () => {
-        ro?.disconnect();
-        map.remove();
-        mapRef.current = null;
-        tileLayerRef.current = null;
-        labelLayerRef.current = null;
-        overlayLayerRef.current = null;
-        hoverMarkerRef.current = null;
-      };
-    } catch {
-      return undefined;
+      const hopsSrc = map.getSource('rf-hops') as GeoJSONSource | undefined;
+      if (hopsSrc) {
+        hopsSrc.setData(data.hops);
+      } else {
+        map.addSource('rf-hops', { type: 'geojson', data: data.hops });
+        map.addLayer({
+          id: 'rf-hops-glow',
+          type: 'line',
+          source: 'rf-hops',
+          layout: { 'line-cap': 'round', 'line-join': 'round' },
+          paint: {
+            'line-color': ['get', 'color'],
+            'line-width': ['case', ['get', 'isSelected'], 13, 8],
+            'line-blur': 5,
+            'line-opacity': 0.28,
+          },
+        });
+        map.addLayer({
+          id: 'rf-hops-core',
+          type: 'line',
+          source: 'rf-hops',
+          layout: { 'line-cap': 'round', 'line-join': 'round' },
+          paint: {
+            'line-color': ['get', 'color'],
+            'line-width': ['case', ['get', 'isSelected'], 4.2, 2.8],
+            'line-opacity': 0.96,
+          },
+        });
+      }
+    },
+    [buildGeoJsonData],
+  );
+
+  const syncTerrainAndSky = useCallback((map: MapLibreMap) => {
+    if (!styleReadyRef.current) return;
+    const enable3D = is3DRef.current;
+    const currentBasemap = basemapRef.current;
+    const isDarkSurface = currentBasemap === 'dark' || themeRef.current === 'dark';
+
+    if (enable3D) {
+      if (!map.getSource('terrainSource')) {
+        map.addSource('terrainSource', {
+          type: 'raster-dem',
+          url: MAPTERHORN_TILEJSON,
+        });
+      }
+      if (!map.getSource('hillshadeSource')) {
+        map.addSource('hillshadeSource', {
+          type: 'raster-dem',
+          url: MAPTERHORN_TILEJSON,
+        });
+      }
+
+      if (currentBasemap !== 'satellite' && !map.getLayer('hills')) {
+        const firstSymbolId = map
+          .getStyle()
+          .layers?.find((l: LayerSpecification) => l.type === 'symbol')?.id;
+        map.addLayer(
+          {
+            id: 'hills',
+            type: 'hillshade',
+            source: 'hillshadeSource',
+            layout: { visibility: 'visible' },
+            paint: {
+              'hillshade-shadow-color': isDarkSurface ? '#020617' : '#334155',
+              'hillshade-highlight-color': isDarkSurface ? '#334155' : '#ffffff',
+              'hillshade-exaggeration': isDarkSurface ? 0.35 : 0.42,
+            },
+          },
+          firstSymbolId,
+        );
+      } else if (map.getLayer('hills')) {
+        map.setLayoutProperty('hills', 'visibility', 'visible');
+      }
+
+      try {
+        map.setTerrain({ source: 'terrainSource', exaggeration: 1.35 });
+      } catch {
+        // ignore if DEM source is still initializing
+      }
+
+      try {
+        map.setSky({
+          'sky-color': isDarkSurface ? '#09111e' : '#93c5fd',
+          'horizon-color': isDarkSurface ? '#162338' : '#e0f2fe',
+          'fog-color': isDarkSurface ? '#0c1320' : '#edf4fb',
+          'fog-ground-blend': 0.48,
+          'horizon-fog-blend': 0.55,
+          'atmosphere-blend': 0.72,
+        });
+      } catch {
+        // ignore sky unsupported environments
+      }
+    } else {
+      try {
+        map.setTerrain(null);
+      } catch {
+        // ignore
+      }
+      if (map.getLayer('hills')) {
+        map.setLayoutProperty('hills', 'visibility', 'none');
+      }
     }
   }, []);
 
-  // Switch basemap tile layer
-  useEffect(() => {
+  const updateQuickPopoverScreenPos = useCallback(() => {
     const map = mapRef.current;
-    if (!map) return;
-
-    if (tileLayerRef.current) {
-      map.removeLayer(tileLayerRef.current);
-      tileLayerRef.current = null;
+    const role = selectedSiteRef.current;
+    if (!map || !role || !wrapperRef.current) {
+      setPopoverScreenPos(null);
+      return;
     }
-    if (labelLayerRef.current) {
-      map.removeLayer(labelLayerRef.current);
-      labelLayerRef.current = null;
+    const sc = scenarioRef.current;
+    if (role === 'repeater' && sc.mode !== 'relay') {
+      setPopoverScreenPos(null);
+      return;
     }
+    const site = sc[role];
+    const pt = map.project([site.coords.lng, site.coords.lat]);
+    const w = wrapperRef.current.clientWidth;
+    const h = wrapperRef.current.clientHeight;
+    const clampedX = Math.max(150, Math.min(w - 150, pt.x));
+    const clampedY = Math.max(175, Math.min(h - 32, pt.y - 46));
+    setPopoverScreenPos({ x: clampedX, y: clampedY });
+  }, []);
 
-    const cfg = BASEMAPS[basemap];
-    const baseLayer = L.tileLayer(cfg.url, {
-      attribution: cfg.attribution,
-      maxZoom: cfg.maxZoom,
-      zIndex: 0,
-    }).addTo(map);
-    tileLayerRef.current = baseLayer;
-
-    if (cfg.overlayUrl) {
-      labelLayerRef.current = L.tileLayer(cfg.overlayUrl, {
-        maxZoom: cfg.maxZoom,
-        zIndex: 1,
-      }).addTo(map);
-    }
-  }, [basemap]);
-
-  // Draw markers, paths, and obstruction warnings
+  // Initialize MapLibre GL map once
   useEffect(() => {
-    const map = mapRef.current;
-    const overlays = overlayLayerRef.current;
-    if (!map || !overlays) return;
+    const el = containerRef.current;
+    if (!el || mapRef.current || !hasWebGLSupport()) return;
 
-    overlays.clearLayers();
-
-    if (scenario.mode === 'relay') {
-      const directStroke = analysis.directReference
-        ? verdictStroke(analysis.directReference.verdict)
-        : '#64748b';
-      L.polyline(
-        [
-          [scenario.tx.coords.lat, scenario.tx.coords.lng],
-          [scenario.rx.coords.lat, scenario.rx.coords.lng],
-        ],
-        {
-          color: directStroke,
-          weight: 2,
-          dashArray: '6 6',
-          opacity: 0.75,
-        },
-      ).addTo(overlays);
+    let map: MapLibreMap;
+    try {
+      appliedBasemapRef.current = basemapRef.current;
+      map = new MapLibreMap({
+        container: el,
+        style: getMapStyle(basemapRef.current),
+        center: [scenarioRef.current.tx.coords.lng, scenarioRef.current.tx.coords.lat],
+        zoom: 10.5,
+        pitch: is3DRef.current ? 52 : 0,
+        bearing: is3DRef.current ? -16 : 0,
+        maxPitch: 78,
+        attributionControl: false,
+      });
+    } catch {
+      return;
     }
 
-    for (const hop of analysis.hops) {
-      L.polyline(
-        [
-          [hop.txSite.coords.lat, hop.txSite.coords.lng],
-          [hop.rxSite.coords.lat, hop.rxSite.coords.lng],
-        ],
-        {
-          color: verdictStroke(hop.verdict),
-          weight: 4,
-          opacity: 0.92,
-        },
-      )
-        .bindTooltip(
-          createTooltipContent(
-            `${hop.label}: ${hop.distanceKm.toFixed(2)} km | Margin ${hop.fadeMarginDb.toFixed(1)} dB`,
-          ),
-          { sticky: true },
-        )
-        .addTo(overlays);
+    map.addControl(new AttributionControl({ compact: true }), 'bottom-right');
 
-      if (hop.worstPoint && hop.minClearanceRatio < 0.6) {
-        L.marker([hop.worstPoint.lat, hop.worstPoint.lng], {
-          icon: createHazardIcon(),
-          interactive: true,
-        })
-          .bindTooltip(
-            createTooltipContent(
-              `Worst Clearance (${hop.hopId.toUpperCase()}): ${(hop.minClearanceRatio * 100).toFixed(0)}% F1 @ ${hop.worstPoint.distanceKm.toFixed(1)} km`,
-            ),
-          )
-          .addTo(overlays);
+    const onStyleLoad = () => {
+      styleReadyRef.current = true;
+      syncTerrainAndSky(map);
+      syncPathLayers(map);
+    };
+    map.on('style.load', onStyleLoad);
+
+    map.on('rotate', () => {
+      setBearingDeg(Math.round(map.getBearing()));
+    });
+
+    map.on('move', () => {
+      updateQuickPopoverScreenPos();
+      setCtxMenu(null);
+    });
+
+    map.on('click', (e: MapMouseEvent) => {
+      setCtxMenu(null);
+      const hit = map.queryRenderedFeatures(e.point, {
+        layers: map.getLayer('rf-hops-core') ? ['rf-hops-core'] : [],
+      });
+      if (hit.length === 0) {
+        onSelectSiteRef.current(null);
       }
-    }
+    });
 
-    const addSiteMarker = (
-      role: 'tx' | 'repeater' | 'rx',
-      label: string,
-      color: string,
-      siteName: string,
-      coords: { lat: number; lng: number },
-    ) => {
-      const marker = L.marker([coords.lat, coords.lng], {
+    map.on('mousemove', 'rf-hops-core', (e: MapLayerMouseEvent) => {
+      map.getCanvas().style.cursor = 'pointer';
+      const f = e.features?.[0];
+      if (!f?.properties) return;
+      setHoveredHopTooltip({
+        x: e.point.x,
+        y: e.point.y,
+        label: String(f.properties.label ?? ''),
+        distanceKm: Number(f.properties.distanceKm ?? 0),
+        fadeMarginDb: Number(f.properties.fadeMarginDb ?? 0),
+        clearancePct: Number(f.properties.clearancePct ?? 0),
+      });
+    });
+
+    map.on('mouseleave', 'rf-hops-core', () => {
+      map.getCanvas().style.cursor = '';
+      setHoveredHopTooltip(null);
+    });
+
+    map.on('click', 'rf-hops-core', (e: MapLayerMouseEvent) => {
+      const hopId = e.features?.[0]?.properties?.hopId;
+      if (hopId === 'direct' || hopId === 'hop1' || hopId === 'hop2') {
+        onSelectHopRef.current(hopId);
+      }
+    });
+
+    map.on('contextmenu', (e: MapMouseEvent) => {
+      e.preventDefault();
+      onSelectSiteRef.current(null);
+      const w = wrapperRef.current?.clientWidth ?? 1280;
+      const h = wrapperRef.current?.clientHeight ?? 800;
+      setCtxMenu({
+        x: Math.max(16, Math.min(w - 205, e.point.x)),
+        y: Math.max(68, Math.min(h - 190, e.point.y)),
+        lat: Number(e.lngLat.lat.toFixed(5)),
+        lng: Number(e.lngLat.lng.toFixed(5)),
+      });
+    });
+
+    // Create persistent TX, RPT, RX draggable markers
+    const createSiteMarker = (role: SiteRole): SiteMarkerHandle => {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'ls-marker-btn';
+      btn.setAttribute('aria-label', `${roleShortLabel(role)} site marker, click to inspect or drag to move`);
+
+      const pill = document.createElement('span');
+      pill.className = 'ls-marker-pill';
+      pill.style.backgroundColor = roleColorHex(role);
+
+      const stem = document.createElement('span');
+      stem.className = 'ls-marker-stem';
+      stem.setAttribute('aria-hidden', 'true');
+
+      const anchor = document.createElement('span');
+      anchor.className = 'ls-marker-anchor';
+      anchor.style.backgroundColor = roleColorHex(role);
+      anchor.setAttribute('aria-hidden', 'true');
+
+      btn.append(pill, stem, anchor);
+
+      const marker = new Marker({
+        element: btn,
+        anchor: 'bottom',
         draggable: true,
-        icon: createPinIcon(label, color),
-      })
-        .bindTooltip(createTooltipContent(`${label}: ${siteName} (drag to move)`), {
-          direction: 'top',
-          offset: [0, -34],
-        })
-        .addTo(overlays);
+      }).setLngLat([0, 0]);
+
+      const handle: SiteMarkerHandle = { marker, btn, pill, dragging: false };
+
+      marker.on('dragstart', () => {
+        handle.dragging = true;
+        setCtxMenu(null);
+      });
 
       marker.on('dragend', () => {
-        const ll = marker.getLatLng();
+        const ll = marker.getLngLat();
         onMoveSiteRef.current(role, {
           lat: Number(ll.lat.toFixed(5)),
           lng: Number(ll.lng.toFixed(5)),
         });
+        window.setTimeout(() => {
+          handle.dragging = false;
+        }, 60);
       });
+
+      btn.addEventListener('click', (ev) => {
+        ev.stopPropagation();
+        if (handle.dragging) return;
+        setCtxMenu(null);
+        const next = selectedSiteRef.current === role ? null : role;
+        onSelectSiteRef.current(next);
+      });
+
+      btn.addEventListener('keydown', (e) => {
+        const deltas: Record<string, [number, number]> = {
+          ArrowLeft: [-2, 0],
+          ArrowRight: [2, 0],
+          ArrowUp: [0, -2],
+          ArrowDown: [0, 2],
+        };
+        const delta = deltas[e.key];
+        if (!delta) return;
+        e.preventDefault();
+        e.stopPropagation();
+        const step = e.shiftKey ? 5 : 1;
+        const pos = map.project(marker.getLngLat());
+        const nextLl = map.unproject([pos.x + delta[0] * step, pos.y + delta[1] * step]);
+        onMoveSiteRef.current(role, {
+          lat: Number(nextLl.lat.toFixed(5)),
+          lng: Number(nextLl.lng.toFixed(5)),
+        });
+      });
+
+      return handle;
     };
 
-    addSiteMarker('tx', 'TX', '#026498', scenario.tx.name, scenario.tx.coords);
-    if (scenario.mode === 'relay') {
-      addSiteMarker(
-        'repeater',
-        'RPT',
-        '#d97706',
-        scenario.repeater.name,
-        scenario.repeater.coords,
-      );
+    siteMarkersRef.current = {
+      tx: createSiteMarker('tx'),
+      repeater: createSiteMarker('repeater'),
+      rx: createSiteMarker('rx'),
+    };
+
+    mapRef.current = map;
+
+    let ro: ResizeObserver | null = null;
+    if (typeof ResizeObserver !== 'undefined') {
+      ro = new ResizeObserver(() => {
+        map.resize();
+        updateQuickPopoverScreenPos();
+      });
+      ro.observe(el);
     }
-    addSiteMarker('rx', 'RX', '#0f7b55', scenario.rx.name, scenario.rx.coords);
+
+    return () => {
+      ro?.disconnect();
+      Object.values(siteMarkersRef.current).forEach((h) => h?.marker.remove());
+      siteMarkersRef.current = {};
+      hazardMarkersRef.current.forEach((m) => m.remove());
+      hazardMarkersRef.current = [];
+      hoverMarkerRef.current?.remove();
+      hoverMarkerRef.current = null;
+      map.remove();
+      mapRef.current = null;
+    };
+  }, [syncPathLayers, syncTerrainAndSky, updateQuickPopoverScreenPos]);
+
+  // Basemap switch
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || appliedBasemapRef.current === basemap) return;
+    appliedBasemapRef.current = basemap;
+    styleReadyRef.current = false;
+    map.setStyle(getMapStyle(basemap));
+  }, [basemap]);
+
+  // 3D Terrain / 2D Flat switch
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    if (styleReadyRef.current) {
+      syncTerrainAndSky(map);
+      map.easeTo({
+        pitch: is3D ? 52 : 0,
+        bearing: is3D ? -16 : 0,
+        duration: 480,
+      });
+    }
+  }, [is3D, syncTerrainAndSky]);
+
+  // Sync RF GeoJSON layers, site markers, and hazard pins
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+
+    if (styleReadyRef.current) {
+      syncPathLayers(map);
+    }
+
+    const syncRoleMarker = (role: SiteRole, visible: boolean) => {
+      const handle = siteMarkersRef.current[role];
+      if (!handle) return;
+      if (!visible) {
+        handle.marker.remove();
+        return;
+      }
+      const site = scenario[role];
+      handle.pill.textContent = `${roleShortLabel(role)} · ${site.antennaHeightM}m`;
+      handle.btn.dataset.selected = selectedSiteRole === role ? 'true' : 'false';
+      handle.btn.title = `${roleShortLabel(role)}: ${site.name} (${site.antennaHeightM}m AGL) — Click to edit or drag`;
+      handle.marker.setLngLat([site.coords.lng, site.coords.lat]);
+      if (!handle.marker.getElement().isConnected) {
+        handle.marker.addTo(map);
+      }
+    };
+
+    syncRoleMarker('tx', true);
+    syncRoleMarker('repeater', scenario.mode === 'relay');
+    syncRoleMarker('rx', true);
+
+    hazardMarkersRef.current.forEach((m) => m.remove());
+    hazardMarkersRef.current = [];
+    for (const hop of analysis.hops) {
+      if (hop.worstPoint && hop.minClearanceRatio < 0.6) {
+        const badge = document.createElement('div');
+        badge.className = 'ls-hazard-badge';
+        badge.textContent = '!';
+        badge.title = `Worst Clearance (${hop.hopId.toUpperCase()}): ${(hop.minClearanceRatio * 100).toFixed(0)}% F1 @ ${hop.worstPoint.distanceKm.toFixed(1)} km`;
+        const hm = new Marker({ element: badge, anchor: 'center' })
+          .setLngLat([hop.worstPoint.lng, hop.worstPoint.lat])
+          .addTo(map);
+        hazardMarkersRef.current.push(hm);
+      }
+    }
 
     const fitKey = `${scenario.id}:${scenario.mode}`;
-    if (lastScenarioIdRef.current !== fitKey) {
-      lastScenarioIdRef.current = fitKey;
-      const coords: L.LatLngExpression[] = [
-        [scenario.tx.coords.lat, scenario.tx.coords.lng],
-        [scenario.rx.coords.lat, scenario.rx.coords.lng],
-      ];
-      if (scenario.mode === 'relay') {
-        coords.push([scenario.repeater.coords.lat, scenario.repeater.coords.lng]);
-      }
-      map.fitBounds(L.latLngBounds(coords), { padding: [64, 64], maxZoom: 13 });
+    if (lastScenarioKeyRef.current !== fitKey) {
+      const animate = lastScenarioKeyRef.current !== '';
+      lastScenarioKeyRef.current = fitKey;
+      fitAllSites(animate);
     }
-  }, [scenario, analysis]);
 
-  // Synchronize chart hover crosshair marker on map
+    updateQuickPopoverScreenPos();
+  }, [
+    scenario,
+    analysis,
+    selectedHopId,
+    selectedSiteRole,
+    syncPathLayers,
+    fitAllSites,
+    updateQuickPopoverScreenPos,
+  ]);
+
+  // Explicit fit trigger from toolbar or command palette
+  useEffect(() => {
+    if (fitTrigger > 0) {
+      fitAllSites(true);
+    }
+  }, [fitTrigger, fitAllSites]);
+
+  // Focus specific site from inspector card
+  useEffect(() => {
+    if (!focusSiteTrigger || !mapRef.current) return;
+    const site = scenarioRef.current[focusSiteTrigger.role];
+    mapRef.current.flyTo({
+      center: [site.coords.lng, site.coords.lat],
+      zoom: Math.max(mapRef.current.getZoom(), 12.6),
+      pitch: is3DRef.current ? 56 : 0,
+      duration: 550,
+    });
+  }, [focusSiteTrigger]);
+
+  // Chart <-> Map synchronized hover reticle
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
 
     if (!hoveredPoint) {
       if (hoverMarkerRef.current) {
-        map.removeLayer(hoverMarkerRef.current);
+        hoverMarkerRef.current.remove();
         hoverMarkerRef.current = null;
       }
       return;
     }
 
     if (!hoverMarkerRef.current) {
-      hoverMarkerRef.current = L.marker([hoveredPoint.lat, hoveredPoint.lng], {
-        icon: createHoverCrosshairIcon(),
-        interactive: false,
-      }).addTo(map);
+      const reticle = document.createElement('div');
+      reticle.className = 'ls-hover-reticle';
+      hoverMarkerRef.current = new Marker({
+        element: reticle,
+        anchor: 'center',
+      })
+        .setLngLat([hoveredPoint.lng, hoveredPoint.lat])
+        .addTo(map);
     } else {
-      hoverMarkerRef.current.setLatLng([hoveredPoint.lat, hoveredPoint.lng]);
+      hoverMarkerRef.current.setLngLat([hoveredPoint.lng, hoveredPoint.lat]);
     }
   }, [hoveredPoint]);
 
-  const handleFitBounds = () => {
-    const map = mapRef.current;
-    if (!map) return;
-    const coords: L.LatLngExpression[] = [
-      [scenario.tx.coords.lat, scenario.tx.coords.lng],
-      [scenario.rx.coords.lat, scenario.rx.coords.lng],
-    ];
-    if (scenario.mode === 'relay') {
-      coords.push([scenario.repeater.coords.lat, scenario.repeater.coords.lng]);
-    }
-    map.fitBounds(L.latLngBounds(coords), { padding: [64, 64], maxZoom: 14 });
-  };
+  // Close quick popover / context menu on Escape
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setCtxMenu(null);
+        onSelectSiteRef.current(null);
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, []);
+
+  const selectedSiteData = useMemo(() => {
+    if (!selectedSiteRole) return null;
+    if (selectedSiteRole === 'repeater' && scenario.mode !== 'relay') return null;
+    const site = scenario[selectedSiteRole];
+    const groundM =
+      selectedSiteRole === 'tx'
+        ? (analysis.hops[0]?.txSite.groundElevationM ?? site.groundElevationM)
+        : selectedSiteRole === 'repeater'
+          ? (analysis.hops[0]?.rxSite.groundElevationM ?? site.groundElevationM)
+          : (analysis.hops[analysis.hops.length - 1]?.rxSite.groundElevationM ??
+            site.groundElevationM);
+    return { site, groundM };
+  }, [selectedSiteRole, scenario, analysis]);
+
+  const mapBottomInsetPx = useMemo(() => {
+    if (zenMode || fresnelState === 'minimized') return 68;
+    const svgH = fresnelState === 'expanded' ? 330 : fresnelHeightPx;
+    return svgH + 114;
+  }, [zenMode, fresnelState, fresnelHeightPx]);
 
   return (
-    <div className="relative w-full h-full min-h-[320px]">
+    <div
+      ref={wrapperRef}
+      className="relative w-full h-[360px] sm:h-[420px] lg:h-full overflow-hidden"
+      style={
+        {
+          '--map-bottom-inset': `${mapBottomInsetPx}px`,
+        } as React.CSSProperties
+      }
+    >
       <div
         ref={containerRef}
-        className="w-full h-full min-h-[320px]"
+        className="w-full h-full"
         aria-label="Interactive RF topology map (right-click to move sites)"
       />
 
-      <div className="absolute bottom-3 right-3 z-[400] flex items-center gap-1.5">
-        <div
-          className="inline-flex rounded-md border p-0.5 text-xs shadow-md backdrop-blur-sm"
-          style={{
-            backgroundColor:
-              'color-mix(in srgb, var(--bg-panel) 92%, transparent)',
-            borderColor: 'var(--border-subtle)',
-          }}
-        >
-          {(Object.keys(BASEMAPS) as BasemapId[]).map((id) => (
-            <button
-              key={id}
-              type="button"
-              onClick={() => setBasemap(id)}
-              className="px-2 py-1 rounded font-medium cursor-pointer"
-              style={
-                basemap === id
-                  ? {
-                      backgroundColor: 'var(--accent)',
-                      color: 'var(--accent-ink)',
-                    }
-                  : { color: 'var(--text-secondary)' }
-              }
-            >
-              {BASEMAPS[id].label}
-            </button>
-          ))}
-        </div>
+      {/* Reposition MapLibre bottom-right attribution safely above Fresnel drawer */}
+      <style>{`
+        @media (min-width: 1024px) {
+          .maplibregl-ctrl-bottom-right {
+            bottom: var(--map-bottom-inset, 64px) !important;
+            transition: bottom 200ms var(--ease-out);
+          }
+        }
+      `}</style>
 
-        <button
-          type="button"
-          onClick={handleFitBounds}
-          className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-md border text-xs font-medium shadow-md cursor-pointer"
-          style={{
-            backgroundColor:
-              'color-mix(in srgb, var(--bg-panel) 92%, transparent)',
-            borderColor: 'var(--border-subtle)',
-          }}
-          title="Fit all sites in view"
-        >
-          <Maximize2 className="w-3.5 h-3.5" aria-hidden="true" />
-          <span className="hidden sm:inline">Fit Path</span>
-        </button>
+      {/* Basemap Selector Pill — sits cleanly below KpiRibbon on 1024-1279px and inline right at >=1280px */}
+      {!zenMode && (
+        <div className="absolute top-3 lg:top-[118px] xl:top-[68px] right-[58px] z-10 flex items-center gap-1.5 pointer-events-auto">
+          <div
+            role="group"
+            aria-label="Map basemap"
+            className="rf-hud-surface rounded-xl p-1 flex items-center gap-0.5"
+          >
+            {(Object.keys(BASEMAPS) as BasemapId[]).map((id) => (
+              <button
+                key={id}
+                type="button"
+                aria-pressed={basemap === id}
+                onClick={() => onChangeBasemap(id)}
+                className="rf-seg-btn text-[11px] px-2 py-1"
+              >
+                {BASEMAPS[id].label}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Right Floating Map Camera & Terrain Rail (Felt-style vertical stack) */}
+      <div
+        role="group"
+        aria-label="Map camera and terrain controls"
+        className={`absolute ${zenMode ? 'top-3' : 'top-3 lg:top-[68px]'} right-3 z-10 flex flex-col gap-1.5 pointer-events-auto`}
+      >
+        <div className="rf-hud-surface rounded-xl p-1 flex flex-col items-center gap-1">
+          <button
+            type="button"
+            onClick={onToggle3D}
+            aria-pressed={is3D}
+            className={`rf-seg-btn w-8 h-8 !p-0 font-mono-num text-[11px] font-bold`}
+            title={is3D ? 'Switch to 2D flat map' : 'Enable 3D terrain relief'}
+          >
+            {is3D ? '3D' : '2D'}
+          </button>
+
+          <button
+            type="button"
+            onClick={() => fitAllSites(true)}
+            className="rf-icon-btn !border-0 !bg-transparent !shadow-none"
+            title="Fit all sites in view"
+            aria-label="Fit path"
+          >
+            <Maximize2 className="w-3.5 h-3.5" aria-hidden="true" />
+          </button>
+
+          <span className="w-5 h-px" style={{ backgroundColor: 'var(--border-subtle)' }} />
+
+          <button
+            type="button"
+            onClick={() => mapRef.current?.zoomIn({ duration: 220 })}
+            className="rf-icon-btn !border-0 !bg-transparent !shadow-none"
+            title="Zoom in"
+            aria-label="Zoom in"
+          >
+            <Plus className="w-3.5 h-3.5" aria-hidden="true" />
+          </button>
+
+          <button
+            type="button"
+            onClick={() => mapRef.current?.zoomOut({ duration: 220 })}
+            className="rf-icon-btn !border-0 !bg-transparent !shadow-none"
+            title="Zoom out"
+            aria-label="Zoom out"
+          >
+            <Minus className="w-3.5 h-3.5" aria-hidden="true" />
+          </button>
+
+          <button
+            type="button"
+            onClick={() =>
+              mapRef.current?.easeTo({
+                bearing: 0,
+                pitch: is3D ? 45 : 0,
+                duration: 360,
+              })
+            }
+            className="rf-icon-btn !border-0 !bg-transparent !shadow-none"
+            title="Reset map north & bearing"
+            aria-label="Reset compass north"
+          >
+            <Compass
+              className="w-3.5 h-3.5 transition-transform duration-150"
+              style={{ transform: `rotate(${-bearingDeg}deg)` }}
+              aria-hidden="true"
+            />
+          </button>
+        </div>
       </div>
+
+      {/* Hop Line Hover Tooltip */}
+      {hoveredHopTooltip && (
+        <div
+          className="rf-hud-surface-strong rounded-lg px-2.5 py-1.5 text-[11px] font-mono-num pointer-events-none absolute z-30"
+          style={{
+            left: `${hoveredHopTooltip.x + 14}px`,
+            top: `${Math.max(72, hoveredHopTooltip.y - 42)}px`,
+          }}
+        >
+          <div className="font-semibold text-[11px]">{hoveredHopTooltip.label}</div>
+          <div style={{ color: 'var(--text-secondary)' }}>
+            {hoveredHopTooltip.distanceKm.toFixed(2)} km · Margin{' '}
+            {hoveredHopTooltip.fadeMarginDb >= 0 ? '+' : ''}
+            {hoveredHopTooltip.fadeMarginDb.toFixed(1)} dB · {hoveredHopTooltip.clearancePct}% F1
+          </div>
+        </div>
+      )}
+
+      {/* On-Map Marker Quick-Edit Popover */}
+      {selectedSiteData && popoverScreenPos && (
+        <div
+          className="ls-quick-popover absolute z-30 w-[264px] p-3 text-xs space-y-2.5 pointer-events-auto"
+          style={{
+            left: `${popoverScreenPos.x}px`,
+            top: `${popoverScreenPos.y}px`,
+            transform: 'translate(-50%, -100%)',
+          }}
+          role="dialog"
+          aria-label={`Quick edit ${selectedSiteData.site.name}`}
+        >
+          <div className="flex items-start justify-between gap-2">
+            <div className="flex items-center gap-2 min-w-0">
+              <span
+                className="px-1.5 py-0.5 rounded font-mono-num text-[10px] font-bold text-white shrink-0"
+                style={{ backgroundColor: roleColorHex(selectedSiteData.site.role) }}
+              >
+                {roleShortLabel(selectedSiteData.site.role)}
+              </span>
+              <div className="min-w-0">
+                <div className="font-semibold truncate">{selectedSiteData.site.name}</div>
+                <div className="font-mono-num text-[10.5px]" style={{ color: 'var(--text-muted)' }}>
+                  Ground {selectedSiteData.groundM.toFixed(0)}m ASL · Tip{' '}
+                  {(selectedSiteData.groundM + selectedSiteData.site.antennaHeightM).toFixed(0)}m
+                </div>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => onSelectSite(null)}
+              className="rf-icon-btn !min-inline-size-[24px] !min-block-size-[24px] !p-0.5 shrink-0"
+              aria-label="Close quick site editor"
+            >
+              <X className="w-3.5 h-3.5" aria-hidden="true" />
+            </button>
+          </div>
+
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between text-[11px]">
+              <span style={{ color: 'var(--text-secondary)' }}>Tower Height (AGL)</span>
+              <span className="font-mono-num font-bold text-xs">
+                {selectedSiteData.site.antennaHeightM} m
+              </span>
+            </div>
+
+            <div className="flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={() =>
+                  onUpdateSiteHeight(
+                    selectedSiteData.site.role,
+                    Math.max(1, selectedSiteData.site.antennaHeightM - 5),
+                  )
+                }
+                className="rf-btn-subtle px-1.5 py-1 font-mono-num text-[10.5px]"
+                aria-label="Decrease tower height by 5 meters"
+              >
+                -5m
+              </button>
+              <input
+                type="range"
+                min={1}
+                max={200}
+                step={1}
+                aria-label="Quick tower height slider"
+                value={Math.min(200, selectedSiteData.site.antennaHeightM)}
+                onChange={(e) =>
+                  onUpdateSiteHeight(selectedSiteData.site.role, Number(e.target.value))
+                }
+                className="flex-1 cursor-pointer"
+              />
+              <button
+                type="button"
+                onClick={() =>
+                  onUpdateSiteHeight(
+                    selectedSiteData.site.role,
+                    Math.min(400, selectedSiteData.site.antennaHeightM + 5),
+                  )
+                }
+                className="rf-btn-subtle px-1.5 py-1 font-mono-num text-[10.5px]"
+                aria-label="Increase tower height by 5 meters"
+              >
+                +5m
+              </button>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => onEditInInspector(selectedSiteData.site.role)}
+            className="rf-btn-subtle w-full py-1.5 text-[11px]"
+          >
+            <SlidersHorizontal className="w-3 h-3" aria-hidden="true" />
+            <span>Edit Full Site Specs in Inspector</span>
+          </button>
+        </div>
+      )}
+
+      {/* Right-Click Context Menu */}
+      {ctxMenu && (
+        <div
+          className="ls-ctx-menu absolute z-30 w-[196px] p-2 space-y-1.5 text-xs pointer-events-auto"
+          style={{ left: `${ctxMenu.x}px`, top: `${ctxMenu.y}px` }}
+          role="menu"
+          aria-label="Map location actions"
+        >
+          <div
+            className="font-mono-num text-[10.5px] px-1.5 py-0.5 truncate"
+            style={{ color: 'var(--text-muted)' }}
+          >
+            {ctxMenu.lat.toFixed(5)}, {ctxMenu.lng.toFixed(5)}
+          </div>
+
+          <div className="flex flex-col gap-1">
+            {(
+              [
+                { role: 'tx', label: 'Set TX here', color: 'var(--role-tx)' },
+                ...(scenario.mode === 'relay'
+                  ? [{ role: 'repeater' as const, label: 'Set Repeater here', color: 'var(--role-rpt)' }]
+                  : []),
+                { role: 'rx', label: 'Set RX here', color: 'var(--role-rx)' },
+              ] as Array<{ role: SiteRole; label: string; color: string }>
+            ).map((item) => (
+              <button
+                key={item.role}
+                type="button"
+                onClick={() => {
+                  onMoveSite(item.role, { lat: ctxMenu.lat, lng: ctxMenu.lng });
+                  setCtxMenu(null);
+                }}
+                className="rf-btn-subtle w-full !justify-start px-2 py-1.5 text-[11.5px]"
+              >
+                <span
+                  className="inline-block w-2 h-2 rounded-full shrink-0"
+                  style={{ backgroundColor: item.color }}
+                  aria-hidden="true"
+                />
+                <span>{item.label}</span>
+              </button>
+            ))}
+
+            <button
+              type="button"
+              onClick={() => {
+                const text = `${ctxMenu.lat.toFixed(5)}, ${ctxMenu.lng.toFixed(5)}`;
+                void navigator.clipboard?.writeText(text);
+                onNotify?.(`Copied coordinates: ${text}`);
+                setCtxMenu(null);
+              }}
+              className="rf-btn-ghost w-full !justify-start px-2 py-1 text-[11px]"
+            >
+              <Copy className="w-3 h-3 shrink-0" aria-hidden="true" />
+              <span>Copy coordinates</span>
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -20,10 +20,14 @@ const PRINT_CSS_VAR_MAP: Record<string, string> = {
   '--bg-panel': '#ffffff',
   '--bg-elevated': '#eef2f6',
   '--border-subtle': '#d5dde5',
+  '--border-strong': '#b8c6d4',
   '--text-primary': '#0f1b2b',
   '--text-secondary': '#475569',
   '--accent': '#026498',
   '--accent-ink': '#ffffff',
+  '--role-tx': '#026498',
+  '--role-rpt': '#c2610c',
+  '--role-rx': '#0f7b55',
   '--status-pass': '#0f7b55',
   '--status-pass-bg': '#e6f6ef',
   '--status-marginal': '#b45309',
@@ -31,7 +35,11 @@ const PRINT_CSS_VAR_MAP: Record<string, string> = {
   '--status-fail': '#c81e1e',
   '--status-fail-bg': '#fde8e8',
   '--terrain-fill': '#cbd5e1',
+  '--terrain-fill-top': '#94a3b8',
+  '--terrain-fill-bottom': '#e2e8f0',
   '--terrain-stroke': '#475569',
+  '--clutter-fill': '#64748b',
+  '--grid-line': '#dbe3ec',
 };
 
 function replaceCssVars(raw: string): string {
@@ -60,6 +68,7 @@ export function resolveSvgCssVarsForPrint(
   height?: number,
 ): SVGSVGElement {
   const clone = svgEl.cloneNode(true) as SVGSVGElement;
+  clone.querySelectorAll('[data-hover-overlay="true"]').forEach((node) => node.remove());
   clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
   if (width !== undefined) clone.setAttribute('width', String(width));
   if (height !== undefined) clone.setAttribute('height', String(height));

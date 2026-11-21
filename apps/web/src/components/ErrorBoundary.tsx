@@ -53,13 +53,7 @@ export class ErrorBoundary extends Component<
           color: 'var(--text-primary)',
         }}
       >
-        <div
-          className="max-w-md w-full rounded-xl border p-6 space-y-4 shadow-lg"
-          style={{
-            backgroundColor: 'var(--bg-panel)',
-            borderColor: 'var(--border-subtle)',
-          }}
-        >
+        <div className="rf-card max-w-md w-full p-6 space-y-4">
           <h1 className="text-base font-semibold">
             LinkSight RF encountered an unexpected error
           </h1>
@@ -70,22 +64,14 @@ export class ErrorBoundary extends Component<
             <button
               type="button"
               onClick={this.handleResetDraftAndReload}
-              className="px-3 py-2 rounded-md text-xs font-semibold cursor-pointer"
-              style={{
-                backgroundColor: 'var(--accent)',
-                color: 'var(--accent-ink)',
-              }}
+              className="rf-btn-primary"
             >
               Reset Draft &amp; Reload
             </button>
             <button
               type="button"
               onClick={() => window.location.reload()}
-              className="px-3 py-2 rounded-md border text-xs font-medium cursor-pointer"
-              style={{
-                borderColor: 'var(--border-subtle)',
-                backgroundColor: 'var(--bg-elevated)',
-              }}
+              className="rf-btn-subtle"
             >
               Reload Page
             </button>

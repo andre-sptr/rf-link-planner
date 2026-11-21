@@ -100,6 +100,14 @@ function loadInitialState(): {
     };
   }
 
+  const presetParam = params.get('preset');
+  if (presetParam) {
+    const foundPreset = DEMO_SCENARIOS.find((item) => item.id === presetParam);
+    if (foundPreset) {
+      return { scenario: cloneScenario(foundPreset), invalidUrlWarning: false };
+    }
+  }
+
   return {
     scenario: readActiveDraft() ?? cloneScenario(DEMO_SCENARIOS[0]!),
     invalidUrlWarning: false,

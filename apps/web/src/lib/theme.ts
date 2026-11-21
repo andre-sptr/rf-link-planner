@@ -34,6 +34,18 @@ export function applyMetaColorScheme(pref: ThemePreference): void {
   if (meta) {
     meta.setAttribute('content', pref === 'system' ? 'light dark' : pref);
   }
+
+  const themeMetas = document.querySelectorAll('meta[name="theme-color"]');
+  themeMetas.forEach((tag) => {
+    if (pref === 'light') {
+      tag.setAttribute('content', '#ffffff');
+    } else if (pref === 'dark') {
+      tag.setAttribute('content', '#111722');
+    } else {
+      const media = tag.getAttribute('media') || '';
+      tag.setAttribute('content', media.includes('dark') ? '#111722' : '#ffffff');
+    }
+  });
 }
 
 /**

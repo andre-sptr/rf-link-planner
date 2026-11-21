@@ -1,180 +1,81 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import {
-  analyzeScenario,
-  type FresnelPoint,
-} from '@linksight/rf-engine';
-import {
-  resolveActiveTheme,
-  subscribeThemeChanges,
-  toggleColorScheme,
-  type ResolvedTheme,
-} from './lib/theme';
-import { useElevation } from './state/useElevation';
-import { usePlannerStore } from './state/usePlannerStore';
-import { FresnelProfileChart } from './components/FresnelProfileChart';
-import { InspectorPanel } from './components/InspectorPanel';
-import { KpiRibbon } from './components/KpiRibbon';
-import { MapCanvas } from './components/MapCanvas';
-import { ScenarioDialog, type DialogMode } from './components/ScenarioDialog';
-import { TopBar } from './components/TopBar';
+import { Suspense, lazy, useCallback, useEffect, useState } from 'react';
+import { LandingPage } from './components/landing/LandingPage';
 
-export function App() {
-  const store = usePlannerStore();
-  const elevation = useElevation(store.scenario);
+const WorkbenchApp = lazy(() => import('./WorkbenchApp'));
 
-  const [theme, setTheme] = useState<ResolvedTheme>(() => resolveActiveTheme());
-  const [dialogMode, setDialogMode] = useState<DialogMode>(null);
-  const [selectedHopId, setSelectedHopId] = useState<'direct' | 'hop1' | 'hop2'>(
-    'hop1',
-  );
-  const [hoveredPoint, setHoveredPoint] = useState<FresnelPoint | null>(null);
-  const [exportingPdf, setExportingPdf] = useState(false);
+function isWorkbenchLocation(loc: { pathname: string; search: string }): boolean {
+  const path = loc.pathname.toLowerCase();
+  if (
+    path === '/planner' ||
+    path.startsWith('/planner/') ||
+    path === '/app' ||
+    path.startsWith('/app/')
+  ) {
+    return true;
+  }
+  const params = new URLSearchParams(loc.search);
+  return params.has('s') || params.has('preset') || params.has('dialog');
+}
 
-  const chartSvgRef = useRef<SVGSVGElement | null>(null);
-
-  useEffect(() => {
-    return subscribeThemeChanges((resolved) => {
-      setTheme(resolved);
-    });
-  }, []);
-
-  const analysis = useMemo(() => {
-    return analyzeScenario(store.scenario, elevation.elevations);
-  }, [store.scenario, elevation.elevations]);
-
-  useEffect(() => {
-    if (store.scenario.mode === 'ptp') {
-      setSelectedHopId('direct');
-    } else if (selectedHopId === 'direct' && !analysis.directReference) {
-      setSelectedHopId('hop1');
-    }
-  }, [store.scenario.mode, selectedHopId, analysis.directReference]);
-
-  const activeHop = useMemo(() => {
-    if (selectedHopId === 'direct' && analysis.directReference) {
-      return analysis.directReference;
-    }
-    return (
-      analysis.hops.find((h) => h.hopId === selectedHopId) ?? analysis.hops[0]!
-    );
-  }, [analysis, selectedHopId]);
-
-  const handleExportPdf = async () => {
-    setExportingPdf(true);
-    try {
-      const { exportSiteSurveyPdf } = await import('./lib/pdfReport');
-      await exportSiteSurveyPdf({
-        scenario: store.scenario,
-        analysis,
-        elevationSource: elevation.source,
-        chartHopLabel: activeHop.label,
-        chartSvgElement: chartSvgRef.current,
-      });
-      store.notify('Exported PDF RF Site Survey report.');
-    } catch {
-      store.notify('Failed to generate PDF report.');
-    } finally {
-      setExportingPdf(false);
-    }
-  };
-
+function WorkbenchLoadingFallback() {
   return (
-    <div className="workbench-root">
-      <TopBar
-        scenarioId={store.scenario.id}
-        mode={store.scenario.mode}
-        theme={theme}
-        onSelectPreset={(id) => {
-          store.selectPreset(id);
-          setHoveredPoint(null);
-        }}
-        onChangeMode={(mode) => {
-          store.setMode(mode);
-          setSelectedHopId(mode === 'relay' ? 'hop1' : 'direct');
-          setHoveredPoint(null);
-        }}
-        onShare={() => void store.copyShareUrl()}
-        onExportPdf={() => void handleExportPdf()}
-        onOpenScenarios={() => setDialogMode('scenarios')}
-        onOpenFormulas={() => setDialogMode('formulas')}
-        onToggleTheme={() => setTheme(toggleColorScheme())}
-        exportingPdf={exportingPdf}
-      />
-
-      <main className="flex-1 min-h-0 flex flex-col lg:flex-row">
-        <InspectorPanel
-          scenario={store.scenario}
-          analysis={analysis}
-          activeHop={activeHop}
-          onUpdateSite={store.updateSite}
-          onUpdatePropagation={store.updatePropagation}
-          onApplyEquipmentPreset={store.applyEquipmentPreset}
-          onSwapTxRx={store.swapTxRx}
-          onCenterRepeater={store.placeRepeaterMidpoint}
-          onApplyTowerBoost={store.applyBalancedTowerBoost}
-        />
-
-        <div className="order-1 lg:order-2 flex-1 min-w-0 min-h-0 flex flex-col">
-          <div className="relative h-[340px] lg:h-auto lg:flex-1 lg:min-h-[300px]">
-            <MapCanvas
-              scenario={store.scenario}
-              analysis={analysis}
-              theme={theme}
-              hoveredPoint={hoveredPoint}
-              onMoveSite={(role, coords) => store.updateSite(role, { coords })}
-            />
-
-            <div className="absolute top-3 left-12 right-3 z-[400] pointer-events-none flex justify-start">
-              <div className="pointer-events-auto max-w-full">
-                <KpiRibbon
-                  analysis={analysis}
-                  activeHop={activeHop}
-                  targetFadeMarginDb={store.scenario.propagation.targetFadeMarginDb}
-                  elevationSource={elevation.source}
-                  degraded={elevation.degraded}
-                  loading={elevation.loading}
-                />
-              </div>
-            </div>
-          </div>
-
-          <FresnelProfileChart
-            hops={analysis.hops}
-            directReference={analysis.directReference}
-            selectedHopId={activeHop.hopId}
-            onSelectHop={(hopId) => setSelectedHopId(hopId)}
-            onHoverPoint={setHoveredPoint}
-            svgRef={chartSvgRef}
-          />
-        </div>
-      </main>
-
-      <ScenarioDialog
-        mode={dialogMode}
-        activeScenario={store.scenario}
-        savedScenarios={store.savedScenarios}
-        onClose={() => setDialogMode(null)}
-        onSelectPreset={store.selectPreset}
-        onSaveScenario={store.saveScenarioToStorage}
-        onLoadSaved={store.loadSavedScenario}
-        onDeleteSaved={store.deleteSavedScenario}
-      />
-
-      {store.toastMessage && (
-        <div
-          role="status"
-          aria-live="polite"
-          className="fixed bottom-4 left-1/2 -translate-x-1/2 z-[1000] px-3.5 py-2 rounded-lg border shadow-lg text-xs font-medium"
-          style={{
-            backgroundColor: 'var(--bg-panel)',
-            borderColor: 'var(--accent)',
-            color: 'var(--text-primary)',
-          }}
-        >
-          {store.toastMessage}
-        </div>
-      )}
+    <div
+      className="min-h-[100dvh] w-full flex items-center justify-center"
+      style={{
+        backgroundColor: 'var(--bg-canvas)',
+        color: 'var(--text-secondary)',
+      }}
+      role="status"
+      aria-live="polite"
+    >
+      <span className="font-mono-num text-xs tracking-wide">
+        Loading LinkSight RF terrain workbench…
+      </span>
     </div>
   );
 }
+
+export function App() {
+  const [routeUrl, setRouteUrl] = useState(() =>
+    typeof window === 'undefined'
+      ? '/'
+      : `${window.location.pathname}${window.location.search}`,
+  );
+
+  useEffect(() => {
+    const onPopState = () => {
+      setRouteUrl(`${window.location.pathname}${window.location.search}`);
+    };
+    window.addEventListener('popstate', onPopState);
+    return () => window.removeEventListener('popstate', onPopState);
+  }, []);
+
+  const navigate = useCallback((to: string) => {
+    if (typeof window === 'undefined') return;
+    const url = new URL(to, window.location.origin);
+    const next = `${url.pathname}${url.search}${url.hash}`;
+    window.history.pushState({}, '', next);
+    setRouteUrl(`${url.pathname}${url.search}`);
+    if (!url.hash) {
+      window.scrollTo?.(0, 0);
+    }
+  }, []);
+
+  const parsed = new URL(routeUrl, 'https://rf.andresptr.site');
+  const showWorkbench = isWorkbenchLocation({
+    pathname: parsed.pathname,
+    search: parsed.search,
+  });
+
+  if (!showWorkbench) {
+    return <LandingPage onNavigate={navigate} />;
+  }
+
+  return (
+    <Suspense fallback={<WorkbenchLoadingFallback />}>
+      <WorkbenchApp onNavigateHome={() => navigate('/')} />
+    </Suspense>
+  );
+}
+
 export default App;

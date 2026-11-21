@@ -4,11 +4,14 @@ import tailwindcss from '@tailwindcss/vite';
 
 export default defineConfig({
   plugins: [react(), tailwindcss()],
+  worker: {
+    format: 'es',
+  },
   build: {
     rollupOptions: {
       output: {
         manualChunks: {
-          'vendor-leaflet': ['leaflet'],
+          'vendor-maplibre': ['maplibre-gl'],
         },
       },
     },

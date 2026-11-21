@@ -39,7 +39,11 @@ export function NumericField({
 
   return (
     <div className={className}>
-      <label className="block text-[11px] mb-0.5" htmlFor={id}>
+      <label
+        className="block text-[11px] font-medium mb-1 truncate"
+        style={{ color: 'var(--text-secondary)' }}
+        htmlFor={id}
+      >
         {label}
       </label>
       <input
@@ -91,8 +95,8 @@ export function NumericField({
       )}
       {helperText && (
         <div
-          className="font-mono-num text-[10px] mt-0.5"
-          style={{ color: 'var(--text-secondary)' }}
+          className="font-mono-num text-[10.5px] mt-1"
+          style={{ color: 'var(--text-muted)' }}
         >
           {helperText}
         </div>
